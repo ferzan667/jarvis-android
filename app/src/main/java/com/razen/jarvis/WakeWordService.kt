@@ -22,6 +22,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
     companion object {
         const val ACTION_STOP = "com.razen.jarvis.STOP_LISTENING"
         const val ACTION_TEST = "com.razen.jarvis.TEST_WAKE"
+        const val ACTION_WAKE = "com.razen.jarvis.WAKE_DETECTED"
         private const val LISTEN_CHANNEL = "jarvis_microphone_v3"
         private const val ALERT_CHANNEL = "jarvis_response_v3"
         private const val LISTEN_ID = 71
@@ -67,7 +68,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopSelf()
-            ACTION_TEST -> wakeDetected(1.0f)
+            ACTION_TEST -> wakeDetected(1.0f, manualTest = true)
         }
         // Never automatically restart background microphone capture after process termination.
         return START_NOT_STICKY
@@ -96,7 +97,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         })
     }
 
-    private fun wakeDetected(confidence: Float) {
+    private fun wakeDetected(confidence: Float, manualTest: Boolean = false) {
         if (!running || busy || SystemClock.elapsedRealtime() - lastWake < 5000L) return
         busy = true
         lastWake = SystemClock.elapsedRealtime()
@@ -104,6 +105,16 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         Log.i(TAG, "Jarvis detected: $confidence")
         saveStatus("JARVIS algılandı! Güven: ${(confidence * 100).toInt()}%")
         notifyResponse("Buyurun efendim", "ChatGPT'yi açmak için bildirime dokunun")
+        // Activity launch from background/lock screen is not allowed on standard Android.
+        // When this app is visible, route to the user's default assistant and release our mic.
+        if (MainActivity.visible && !manualTest) {
+            handler.postDelayed({
+                if (running) {
+                    sendBroadcast(Intent(ACTION_WAKE).setPackage(packageName))
+                    stopSelf()
+                }
+            }, 1300L)
+        }
         if (ttsReady) {
             val spoken = tts?.speak(
                 "Buyurun efendim.", TextToSpeech.QUEUE_FLUSH, null, "jarvis_ack"
