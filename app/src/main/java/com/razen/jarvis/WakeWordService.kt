@@ -23,6 +23,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_STOP = "com.razen.jarvis.STOP_LISTENING"
         const val ACTION_TEST = "com.razen.jarvis.TEST_WAKE"
         const val ACTION_WAKE = "com.razen.jarvis.WAKE_DETECTED"
+        const val EXTRA_HANDOFF = "com.razen.jarvis.HANDOFF_TO_CHATGPT"
         private const val LISTEN_CHANNEL = "jarvis_microphone_v3"
         private const val ALERT_CHANNEL = "jarvis_response_v3"
         private const val LISTEN_ID = 71
@@ -107,7 +108,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         Log.i(TAG, "Jarvis detected: $confidence")
         detections++
         saveStatus("JARVIS algılandı! Skor: ${"%.2f".format(Locale.US, confidence)}; bu oturumda: $detections")
-        notifyResponse("Buyurun efendim", "ChatGPT'yi açmak için bildirime dokunun")
+        notifyResponse("Buyurun efendim", "ChatGPT sesli sohbetine geçmek için dokunun")
         // Activity launch from background/lock screen is not allowed on standard Android.
         // When this app is visible, route to the user's default assistant and release our mic.
         if (MainActivity.visible && !manualTest) {
@@ -162,9 +163,9 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun chatGptIntent(): PendingIntent {
-        val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
-            ?: Intent(this, MainActivity::class.java)
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val launch = Intent(this, MainActivity::class.java)
+            .putExtra(EXTRA_HANDOFF, true)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         return PendingIntent.getActivity(
             this, 8, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -212,4 +213,5 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         super.onDestroy()
     }
 }
+
 

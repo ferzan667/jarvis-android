@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -58,7 +57,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(8, 15, 25))
         }
         root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
-        root.addView(label("0.3.1 • Tek kelime: JARVIS", 17, Color.LTGRAY))
+        root.addView(label("0.3.2 • Tek kelime: JARVIS", 17, Color.LTGRAY))
         status = label("Durum okunuyor", 19, Color.WHITE)
         root.addView(status)
 
@@ -69,7 +68,7 @@ class MainActivity : Activity() {
                     .setAction(WakeWordService.ACTION_TEST))
             } else status.text = "Önce dinlemeyi başlat"
         })
-        root.addView(button("3 — ChatGPT sesli asistanını aç") { openChatGpt() })
+        root.addView(button("3 — ChatGPT'yi aç") { openChatGpt() })
         root.addView(button("Dinlemeyi durdur") {
             stopService(Intent(this, WakeWordService::class.java))
             status.text = "Durduruldu"
@@ -85,14 +84,14 @@ class MainActivity : Activity() {
         ))
         root.addView(label(
             "ChatGPT → Ayarlar → Ses → Sesle Başlat özelliğini aç. " +
-            "ChatGPT'nin Android'de varsayılan asistan olarak seçilmesi " +
-            "uygun cihazlarda sesli asistan açılışını kolaylaştırabilir. " +
-            "Bu APK ChatGPT kilidini açamaz, sesli görüşmeyi her durumda doğrudan başlatamaz.",
+            "ChatGPT yeni/boş sohbete açılırsa sesli görüşme otomatik başlayabilir. " +
+            "Kilitliyken yeni görüşme otomatik başlatılamaz; bildirime dokunup kilidi açın.",
             13, Color.rgb(155, 175, 190)
         ))
         val scroll = ScrollView(this)
         scroll.addView(root)
         setContentView(scroll)
+        handleHandoff(intent)
     }
 
     override fun onStart() {
@@ -117,6 +116,19 @@ class MainActivity : Activity() {
         }
         handler.removeCallbacks(refresh)
         super.onStop()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleHandoff(intent)
+    }
+
+    private fun handleHandoff(intent: Intent?) {
+        if (intent?.getBooleanExtra(WakeWordService.EXTRA_HANDOFF, false) != true) return
+        intent.removeExtra(WakeWordService.EXTRA_HANDOFF)
+        stopService(Intent(this, WakeWordService::class.java))
+        handler.postDelayed({ openChatGpt() }, 350L)
     }
 
     private fun updateStatus() {
@@ -154,17 +166,9 @@ class MainActivity : Activity() {
     }
 
     private fun openChatGpt() {
-        // ACTION_ASSIST routes to the user's chosen system digital assistant.
-        // ChatGPT must be selected in Android Settings for it to open ChatGPT Voice.
-        try {
-            val defaultAssistant = Settings.Secure.getString(contentResolver, "assistant") ?: ""
-            val assist = Intent(Intent.ACTION_ASSIST)
-            if (defaultAssistant.contains("com.openai.chatgpt") &&
-                assist.resolveActivity(packageManager) != null) {
-                startActivity(assist)
-                return
-            }
-        } catch (_: Exception) { }
+        // ChatGPT's documented Start with Voice setting can start Voice on a new/empty chat.
+        // There is no public third-party intent that guarantees Voice from a locked screen.
+        stopService(Intent(this, WakeWordService::class.java))
         try {
             val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
             if (launch != null) {
@@ -192,4 +196,5 @@ class MainActivity : Activity() {
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
+
 

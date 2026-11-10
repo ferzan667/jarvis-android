@@ -11,8 +11,8 @@ android {
         applicationId = "com.razen.jarvis"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.3.1"
+        versionCode = 6
+        versionName = "0.3.2"
     }
 
     compileOptions {
@@ -25,4 +25,5 @@ android {
 dependencies {
     implementation("com.github.msnilsen:openwakeword-android:0.1.2")
 }
+
 
