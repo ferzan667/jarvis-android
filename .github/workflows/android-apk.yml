@@ -41,6 +41,17 @@ jobs:
           yes | "$SDKMANAGER" --sdk_root="$SDK_DIR" --licenses >/dev/null || true
           "$SDKMANAGER" --sdk_root="$SDK_DIR" "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Install single-word Jarvis model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          curl -fL --retry 4 --connect-timeout 15 \
+            "https://raw.githubusercontent.com/fwartner/home-assistant-wakewords-collection/main/en/jarvis/jarvis_v1.onnx" \
+            -o app/src/main/assets/jarvis_v1.onnx
+          test "$(stat -c%s app/src/main/assets/jarvis_v1.onnx)" -eq 208134
+          sha256sum app/src/main/assets/jarvis_v1.onnx
+
       - name: Compile APK
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
