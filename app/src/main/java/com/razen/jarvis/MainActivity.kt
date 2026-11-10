@@ -9,11 +9,11 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioManager
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.Process
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.view.Gravity
@@ -149,8 +149,9 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT < 29) return "Android sürümü nedeniyle ölçülemiyor"
         return try {
             val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (audio.activeRecordingConfigurations.any { it.clientUid == Process.myUid() })
-                "etkin" else "etkin değil"
+            if (audio.activeRecordingConfigurations.any {
+                    it.clientAudioSource == MediaRecorder.AudioSource.VOICE_RECOGNITION && !it.isClientSilenced
+                }) "ses tanıma kaydı etkin" else "ses tanıma kaydı görünmüyor"
         } catch (e: Exception) { "ölçülemedi: ${e.javaClass.simpleName}" }
     }
 
