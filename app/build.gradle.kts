@@ -11,8 +11,8 @@ android {
         applicationId = "com.razen.jarvis"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.5.0"
+        versionCode = 11
+        versionName = "0.6.0"
     }
 
     compileOptions {
@@ -23,9 +23,11 @@ android {
 }
 
 dependencies {
-    implementation("com.github.msnilsen:openwakeword-android:0.1.2")
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
+
 
 
 

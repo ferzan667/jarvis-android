@@ -62,7 +62,24 @@ class WakeWordService : Service() {
         try {
             if (detector == null) detector = OpenWakeWord.Builder(applicationContext)
                 .setModelAsset("jarvis_v1.onnx").setThreshold(0.35f)
-                .setDebounceMs(5000L).build()
+                .setDebounceMs(5000L)
+                .setTelemetryListener(object : OpenWakeWord.OnTelemetryListener {
+                    override fun onState(state: String) {
+                        getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+                            .putString("engine_state", state).apply()
+                        if (state == "MIC_ERROR" || state == "STOPPED_UNEXPECTEDLY" ||
+                            state.startsWith("ERROR:") || state.startsWith("INFERENCE_ERROR:")) {
+                            saveStatus("Algılama hatası: $state")
+                            stopSelf()
+                        }
+                    }
+
+                    override fun onFrame(level: Int, score: Float) {
+                        getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+                            .putInt("mic_level", level)
+                            .putFloat("model_score", if (score.isFinite()) score else -1f).apply()
+                    }
+                }).build()
             detector?.start { confidence -> wakeDetected(confidence) }
             saveStatus("Algılayıcı iş parçacığı başlatıldı; model ve mikrofon henüz doğrulanmadı. Mikrofon göstergesini ve Logcat'i kontrol edin.")
         } catch (e: Exception) {
@@ -210,6 +227,7 @@ class WakeWordService : Service() {
         super.onDestroy()
     }
 }
+
 
 
 

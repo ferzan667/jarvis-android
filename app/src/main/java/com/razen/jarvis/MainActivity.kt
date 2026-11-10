@@ -6,100 +6,141 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.media.AudioManager
-import android.media.MediaRecorder
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
+import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
-import android.text.InputType
 import java.util.Locale
 
 class MainActivity : Activity() {
     companion object {
-        @Volatile var visible: Boolean = false
+        @Volatile var visible = false
             private set
     }
-    private lateinit var status: TextView
-    private lateinit var detail: TextView
+
+    private val background = Color.rgb(6, 13, 25)
+    private val panel = Color.rgb(14, 29, 46)
+    private val cyan = Color.rgb(70, 225, 241)
+    private val muted = Color.rgb(152, 177, 195)
     private val handler = Handler(Looper.getMainLooper())
     private val permissionRequest = 210
     private var pendingStartLive = false
+    private lateinit var stateText: TextView
+    private lateinit var stageText: TextView
+    private lateinit var levelText: TextView
+    private lateinit var levelBar: ProgressBar
+    private lateinit var scoreText: TextView
+    private lateinit var logText: TextView
     private lateinit var keyInput: EditText
     private var testTts: TextToSpeech? = null
     private val refresh = object : Runnable {
         override fun run() {
             updateStatus()
-            handler.postDelayed(this, 1200)
+            handler.postDelayed(this, 500)
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.rgb(8, 15, 25)
-        window.navigationBarColor = Color.rgb(8, 15, 25)
-
+        window.statusBarColor = background
+        window.navigationBarColor = background
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(48), dp(24), dp(24))
-            setBackgroundColor(Color.rgb(8, 15, 25))
+            setPadding(dp(20), dp(26), dp(20), dp(28))
+            setBackgroundColor(background)
         }
-        root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
-        root.addView(label("0.5.0 • JARVIS + Gemini Live", 17, Color.LTGRAY))
-        status = label("Durum okunuyor", 19, Color.WHITE)
-        root.addView(status)
+        root.addView(text("J A R V I S", 34, cyan, true))
+        root.addView(text("VOICE SYSTEM  /  0.6.0", 12, muted))
+        root.addView(space(24))
 
-        keyInput = EditText(this).apply {
-            hint = if (GeminiKeyStore.load(this@MainActivity) == null)
-                "Gemini API anahtarını gir" else "Gemini anahtarı kayıtlı"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        val liveCard = card()
+        liveCard.addView(text("SİSTEM DURUMU", 12, cyan, true))
+        stateText = text("Hazırlanıyor", 24, Color.WHITE, true)
+        liveCard.addView(stateText)
+        stageText = text("Model: beklemede", 14, muted)
+        liveCard.addView(stageText)
+        liveCard.addView(space(14))
+        levelText = text("MİKROFON  0%", 12, muted, true)
+        liveCard.addView(levelText)
+        levelBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(cyan)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(39, 64, 82))
         }
-        root.addView(keyInput)
-        root.addView(button("Anahtarı telefonda kaydet") {
-            val value = keyInput.text.toString().trim()
-            if (value.isBlank()) status.text = "Önce Gemini API anahtarını girin"
-            else try {
-                GeminiKeyStore.save(this, value)
-                keyInput.text.clear()
-                keyInput.hint = "Gemini anahtarı kayıtlı"
-                status.text = "Anahtar bu telefonda şifreli kaydedildi"
-            } catch (e: Exception) { status.text = "Anahtar kaydedilemedi: ${e.javaClass.simpleName}" }
+        liveCard.addView(levelBar, LinearLayout.LayoutParams(-1, dp(9)).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(12)
         })
+        scoreText = text("JARVIS SKORU  —", 12, muted, true)
+        liveCard.addView(scoreText)
+        root.addView(liveCard)
 
-        root.addView(button("1 — Dinlemeyi başlat") { startListening() })
-        root.addView(button("2 — Gemini görüşmesini dene") { startGeminiLive() })
-        root.addView(button("Gemini görüşmesini bitir") {
+        root.addView(space(18))
+        root.addView(text("KONTROLLER", 12, cyan, true))
+        root.addView(space(8))
+        root.addView(actionButton("DİNLEMEYİ BAŞLAT", true) { startListening() })
+        root.addView(space(8))
+        root.addView(actionButton("GEMINI SESLİ GÖRÜŞMEYİ DENE", false) { startGeminiLive() })
+        root.addView(space(8))
+        root.addView(actionButton("GÖRÜŞMEYİ BİTİR", false) {
             if (WakeWordService.running) startService(Intent(this, WakeWordService::class.java)
                 .setAction(WakeWordService.ACTION_STOP_LIVE))
         })
-        root.addView(button("TTS tanı testi") { testSpeech() })
-        root.addView(button("Dinlemeyi durdur") {
+        root.addView(space(8))
+        root.addView(actionButton("DİNLEMEYİ DURDUR", false) {
             stopService(Intent(this, WakeWordService::class.java))
-            status.text = "Durduruldu"
+            message("Dinleme durduruldu")
         })
 
-        detail = label("", 14, Color.rgb(171, 210, 225))
-        root.addView(detail)
-        root.addView(label(
-            "Gemini anahtarını kaydet. Önce 2 ile sesli görüşmeyi ayrı test et. " +
-            "Sonra 1 ile yerel Jarvis algılamasını başlat; algılarsa Gemini görüşmesi açılır. " +
-            "Kilit ekranında çalışma Realme 11 üzerinde doğrulanmalıdır.",
-            14, Color.LTGRAY
-        ))
-        val scroll = ScrollView(this)
+        root.addView(space(22))
+        val keyCard = card()
+        keyCard.addView(text("GEMINI BAĞLANTISI", 12, cyan, true))
+        keyCard.addView(text("Sesli görüşme için kendi Gemini API anahtarın gerekir.", 14, muted))
+        keyInput = EditText(this).apply {
+            hint = if (GeminiKeyStore.load(this@MainActivity) == null)
+                "API anahtarını gir" else "Anahtar kayıtlı • değiştirmek için yaz"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setTextColor(Color.WHITE)
+            setHintTextColor(muted)
+            singleLine = true
+            backgroundTintList = android.content.res.ColorStateList.valueOf(cyan)
+        }
+        keyCard.addView(keyInput)
+        keyCard.addView(actionButton("ANAHTARI KAYDET", false) {
+            val value = keyInput.text.toString().trim()
+            if (value.isBlank()) message("Önce API anahtarını gir")
+            else try {
+                GeminiKeyStore.save(this, value)
+                keyInput.text.clear()
+                keyInput.hint = "Anahtar kayıtlı • değiştirmek için yaz"
+                message("Anahtar şifreli kaydedildi")
+            } catch (e: Exception) { message("Anahtar kaydedilemedi: ${e.javaClass.simpleName}") }
+        })
+        root.addView(keyCard)
+
+        root.addView(space(18))
+        val diagCard = card()
+        diagCard.addView(text("TANILAMA", 12, cyan, true))
+        logText = text("Henüz kayıt yok", 13, muted)
+        diagCard.addView(logText)
+        diagCard.addView(space(8))
+        diagCard.addView(actionButton("SES ÇIKIŞINI DENE", false) { testSpeech() })
+        root.addView(diagCard)
+        root.addView(space(16))
+        root.addView(text("Ekran kapalıyken dinleme için bildirim ve mikrofon izinlerini ver. Realme pil ayarlarında JARVIS için arka plan çalışmasına izin ver.", 12, muted))
+        val scroll = ScrollView(this).apply { fillViewport = true }
         scroll.addView(root)
         setContentView(scroll)
     }
@@ -118,53 +159,54 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         testTts?.shutdown()
-        testTts = null
         super.onDestroy()
     }
 
     private fun updateStatus() {
-        status.text = when {
-            WakeWordService.liveActive -> "Gemini görüşmesi açık"
-            WakeWordService.running -> "Jarvis dinleme servisi açık"
-            else -> "Servis kapalı"
-        }
         val pref = getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
-        detail.text = "Tanılama: " + pref.getString("status", "Henüz kayıt yok") +
-            "\nMikrofon kaydı: " + microphoneState()
+        val engine = pref.getString("engine_state", "BEKLEMEDE") ?: "BEKLEMEDE"
+        stateText.text = when {
+            WakeWordService.liveActive -> "Gemini görüşmesi açık"
+            !WakeWordService.running -> "Dinleme kapalı"
+            engine == "CAPTURING" -> "Jarvis dinliyor"
+            engine == "MODEL_LOADING" -> "Model yükleniyor"
+            engine == "MODEL_READY" -> "Mikrofon açılıyor"
+            engine.startsWith("ERROR") || engine.contains("ERROR") -> "Algılama hatası"
+            else -> "Başlatılıyor"
+        }
+        stageText.text = "ALGILAYICI  /  $engine"
+        val level = if (WakeWordService.running) pref.getInt("mic_level", 0) else 0
+        levelBar.progress = level
+        levelText.text = "MİKROFON  $level%"
+        val score = pref.getFloat("model_score", -1f)
+        scoreText.text = if (score < 0 || !WakeWordService.running) "JARVIS SKORU  —"
+            else "JARVIS SKORU  ${"%.2f".format(Locale.US, score)} / 0.35"
+        logText.text = pref.getString("status", "Henüz kayıt yok")
     }
 
-    private fun microphoneState(): String {
-        if (Build.VERSION.SDK_INT < 29) return "Android sürümü nedeniyle ölçülemiyor"
-        return try {
-            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (audio.activeRecordingConfigurations.any {
-                    it.clientAudioSource == MediaRecorder.AudioSource.VOICE_RECOGNITION && !it.isClientSilenced
-                }) "ses tanıma kaydı etkin" else "ses tanıma kaydı görünmüyor"
-        } catch (e: Exception) { "ölçülemedi: ${e.javaClass.simpleName}" }
+    private fun message(value: String) {
+        getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+            .putString("status", value).apply()
+        logText.text = value
     }
 
     private fun testSpeech() {
         testTts?.shutdown()
-        status.text = "TTS hazırlanıyor..."
+        message("Ses çıkışı hazırlanıyor")
         testTts = TextToSpeech(this) { result -> runOnUiThread {
             val engine = testTts
             if (result != TextToSpeech.SUCCESS || engine == null) {
-                status.text = "TTS başlatılamadı (kod $result). Telefonun metin okuma motorunu kontrol edin."
+                message("TTS başlatılamadı: $result")
                 return@runOnUiThread
             }
             val language = engine.setLanguage(Locale.forLanguageTag("tr-TR"))
             if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
-                status.text = "Türkçe TTS sesi eksik veya desteklenmiyor (kod $language)."
+                message("Türkçe TTS sesi eksik: $language")
                 return@runOnUiThread
             }
-            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) { runOnUiThread { status.text = "TTS konuşuyor..." } }
-                override fun onDone(utteranceId: String?) { runOnUiThread { status.text = "TTS tamamlandı. Ses duyulmadıysa medya sesini kontrol edin." } }
-                @Deprecated("Deprecated by Android")
-                override fun onError(utteranceId: String?) { runOnUiThread { status.text = "TTS konuşma hatası." } }
-            })
-            if (engine.speak("Buyurun efendim.", TextToSpeech.QUEUE_FLUSH, null, "manual_tts") == TextToSpeech.ERROR)
-                status.text = "TTS speak() hata döndürdü."
+            val resultCode = engine.speak("Buyurun efendim.", TextToSpeech.QUEUE_FLUSH, null, "manual_tts")
+            message(if (resultCode == TextToSpeech.ERROR) "TTS konuşma hatası"
+                else "Ses çıkışı tetiklendi; duyulmazsa medya sesini kontrol et")
         } }
     }
 
@@ -182,14 +224,14 @@ class MainActivity : Activity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != permissionRequest) return
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
             startWakeService(pendingStartLive)
-        } else status.text = "Mikrofon izni gerekli"
+        else message("Mikrofon izni gerekli")
     }
 
     private fun startGeminiLive() {
         if (GeminiKeyStore.load(this).isNullOrBlank()) {
-            status.text = "Önce Gemini anahtarını kaydedin"
+            message("Önce Gemini API anahtarını kaydet")
             return
         }
         pendingStartLive = true
@@ -203,29 +245,52 @@ class MainActivity : Activity() {
             val intent = Intent(this, WakeWordService::class.java)
             if (startLive) intent.action = WakeWordService.ACTION_START_LIVE
             startForegroundService(intent)
-            status.text = "Başlatılıyor..."
+            message("Servis başlatılıyor")
         } catch (e: Exception) {
-            status.text = "Başlatma hatası: ${e.javaClass.simpleName}"
+            message("Başlatma hatası: ${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
-    private fun label(value: String, sp: Int, color: Int) = TextView(this).apply {
-        text = value
-        textSize = sp.toFloat()
-        setTextColor(color)
-        gravity = Gravity.CENTER
-        setPadding(0, dp(12), 0, dp(12))
+    private fun text(value: String, sp: Int, color: Int, bold: Boolean = false) =
+        TextView(this).apply {
+            text = value
+            textSize = sp.toFloat()
+            setTextColor(color)
+            if (bold) typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.START
+            setPadding(0, dp(5), 0, dp(5))
+        }
+
+    private fun card() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(18), dp(16), dp(18), dp(18))
+        background = GradientDrawable().apply {
+            setColor(panel)
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), Color.rgb(33, 67, 87))
+        }
     }
-    private fun button(label: String, action: () -> Unit) = Button(this).apply {
-        text = label
-        setOnClickListener { action() }
-        layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        )
+
+    private fun actionButton(value: String, primary: Boolean, action: () -> Unit) =
+        Button(this).apply {
+            text = value
+            textSize = 13f
+            isAllCaps = false
+            setTextColor(if (primary) background else cyan)
+            background = GradientDrawable().apply {
+                setColor(if (primary) cyan else panel)
+                cornerRadius = dp(13).toFloat()
+                if (!primary) setStroke(dp(1), Color.rgb(48, 101, 121))
+            }
+            setOnClickListener { action() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
+        }
+
+    private fun space(height: Int) = TextView(this).apply {
+        layoutParams = LinearLayout.LayoutParams(1, dp(height))
     }
+
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
-
-
-
 
