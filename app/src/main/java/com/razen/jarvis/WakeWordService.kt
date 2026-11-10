@@ -132,7 +132,13 @@ class WakeWordService : Service() {
             return
         }
         live = GeminiLiveClient(this, key,
-            onStatus = { message -> saveStatus(message) },
+            onStatus = { message ->
+                if (message.startsWith("Gemini bağlandı;")) {
+                    getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+                        .putString("live_state", "GREETING").apply()
+                }
+                saveStatus(message)
+            },
             onConnected = {
                 liveActive = true
                 getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()

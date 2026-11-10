@@ -39,6 +39,9 @@ class GeminiLiveClient(
     private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
     private val playback = LinkedBlockingQueue<ByteArray>(200)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val microphoneStarted = AtomicBoolean(false)
+    private val responseReceived = AtomicBoolean(false)
+    private var microphoneFallback: Runnable? = null
     private val connectionTimeout = Runnable {
         if (!closed.get()) {
             onStatus("Gemini bağlantısı 20 saniyede kurulamadı. İnternet ve API anahtarını kontrol et.")
@@ -74,8 +77,7 @@ class GeminiLiveClient(
                         mainHandler.removeCallbacks(connectionTimeout)
                         startAudio(webSocket)
                         if (closed.get()) return
-                        onConnected()
-                        onStatus("Gemini Live bağlı; konuşabilirsiniz")
+                        onStatus("Gemini bağlandı; sesli karşılama bekleniyor...")
                         // The wake phrase gets an immediate spoken acknowledgement.
                         val greeting = JSONObject().put("clientContent", JSONObject()
                             .put("turns", org.json.JSONArray().put(JSONObject()
@@ -84,6 +86,9 @@ class GeminiLiveClient(
                                     .put("text", "Bana yalnızca 'Buyurun efendim.' diye sesli yanıt ver; sonra komutumu dinle.")))))
                             .put("turnComplete", true))
                         webSocket.send(greeting.toString())
+                        microphoneFallback = Runnable { startMicrophone(webSocket) }.also {
+                            mainHandler.postDelayed(it, 8_000)
+                        }
                     }
                     val content = message.optJSONObject("serverContent") ?: return
                     if (content.optBoolean("interrupted")) {
@@ -92,11 +97,20 @@ class GeminiLiveClient(
                         player?.flush()
                         player?.play()
                     }
-                    val parts = content.optJSONObject("modelTurn")?.optJSONArray("parts") ?: return
-                    for (i in 0 until parts.length()) {
+                    val parts = content.optJSONObject("modelTurn")?.optJSONArray("parts")
+                    if (parts != null) for (i in 0 until parts.length()) {
                         val data = parts.optJSONObject(i)?.optJSONObject("inlineData")
                             ?.optString("data").orEmpty()
-                        if (data.isNotEmpty()) playback.offer(Base64.decode(data, Base64.DEFAULT))
+                        if (data.isNotEmpty()) {
+                            val audio = Base64.decode(data, Base64.DEFAULT)
+                            if (audio.size > 100 && responseReceived.compareAndSet(false, true))
+                                onStatus("Gemini sesli yanıt gönderiyor...")
+                            if (audio.isNotEmpty()) playback.offer(audio)
+                        }
+                    }
+                    if (content.optBoolean("turnComplete")) {
+                        microphoneFallback?.let { mainHandler.removeCallbacks(it) }
+                        mainHandler.postDelayed({ startMicrophone(webSocket) }, 1_000)
                     }
                 } catch (_: Exception) { onStatus("Gemini yanıtı işlenemedi") }
             }
@@ -137,22 +151,22 @@ class GeminiLiveClient(
             if (output.state != AudioTrack.STATE_INITIALIZED) throw IllegalStateException("AudioTrack")
             player = output
             output.play()
-            input.startRecording()
-            Thread({
-                val chunk = ByteArray(1_280) // 40 ms, PCM16 mono at 16 kHz.
-                while (!closed.get()) {
-                    val count = try { input.read(chunk, 0, chunk.size) } catch (_: Exception) { break }
-                    if (count <= 0) break
-                    val data = Base64.encodeToString(chunk.copyOf(count), Base64.NO_WRAP)
-                    val event = JSONObject().put("realtimeInput", JSONObject().put("audio",
-                        JSONObject().put("mimeType", "audio/pcm;rate=16000").put("data", data)))
-                    if (!webSocket.send(event.toString())) break
-                }
-            }, "JarvisGeminiMic").start()
             Thread({
                 while (!closed.get()) {
                     val chunk = try { playback.poll(500, TimeUnit.MILLISECONDS) } catch (_: Exception) { null }
-                    if (chunk != null) try { output.write(chunk, 0, chunk.size) } catch (_: Exception) { break }
+                    if (chunk != null) try {
+                        if (output.write(chunk, 0, chunk.size) < 0) {
+                            onStatus("Gemini ses çıkışı durdu")
+                            stop()
+                            break
+                        }
+                    } catch (_: Exception) {
+                        if (!closed.get()) {
+                            onStatus("Gemini ses çıkışı hatası")
+                            stop()
+                        }
+                        break
+                    }
                 }
             }, "JarvisGeminiSpeaker").start()
         } catch (e: Exception) {
@@ -161,9 +175,47 @@ class GeminiLiveClient(
         }
     }
 
+    private fun startMicrophone(webSocket: WebSocket) {
+        if (closed.get() || !microphoneStarted.compareAndSet(false, true)) return
+        val input = recorder ?: return
+        try {
+            input.startRecording()
+            if (input.recordingState != AudioRecord.RECORDSTATE_RECORDING)
+                throw IllegalStateException("AudioRecord not recording")
+            onConnected()
+            onStatus("Gemini görüşme mikrofonu açık; konuşabilirsiniz")
+        } catch (e: Exception) {
+            onStatus("Gemini mikrofonu açılamadı: ${e.javaClass.simpleName}")
+            stop()
+            return
+        }
+        Thread({
+            val chunk = ByteArray(1_280) // 40 ms, PCM16 mono at 16 kHz.
+            while (!closed.get()) {
+                val count = try { input.read(chunk, 0, chunk.size) } catch (_: Exception) { break }
+                if (count <= 0) {
+                    if (!closed.get()) {
+                        onStatus("Gemini mikrofon akışı durdu: $count")
+                        stop()
+                    }
+                    break
+                }
+                val data = Base64.encodeToString(chunk.copyOf(count), Base64.NO_WRAP)
+                val event = JSONObject().put("realtimeInput", JSONObject().put("audio",
+                    JSONObject().put("mimeType", "audio/pcm;rate=16000").put("data", data)))
+                if (!webSocket.send(event.toString())) {
+                    onStatus("Gemini ses akışı gönderilemedi")
+                    stop()
+                    break
+                }
+            }
+        }, "JarvisGeminiMic").start()
+    }
+
     fun stop() {
         if (!closed.compareAndSet(false, true)) return
         mainHandler.removeCallbacks(connectionTimeout)
+        microphoneFallback?.let { mainHandler.removeCallbacks(it) }
         playback.clear()
         try { recorder?.stop(); recorder?.release() } catch (_: Exception) {}
         try { player?.stop(); player?.release() } catch (_: Exception) {}

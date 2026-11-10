@@ -60,7 +60,7 @@ class MainActivity : Activity() {
             setBackgroundColor(this@MainActivity.background)
         }
         root.addView(text("J A R V I S", 34, cyan, true))
-        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.1", 12, muted))
+        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.2", 12, muted))
         hud = JarvisHudView(this)
         root.addView(hud, LinearLayout.LayoutParams(-1, dp(260)))
 
@@ -143,9 +143,11 @@ class MainActivity : Activity() {
         val pref = getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
         val engine = pref.getString("engine_state", "BEKLEMEDE") ?: "BEKLEMEDE"
         val liveState = pref.getString("live_state", "IDLE")
-        val connecting = WakeWordService.running && liveState == "CONNECTING"
+        val connecting = WakeWordService.running &&
+            (liveState == "CONNECTING" || liveState == "GREETING")
         stateText.text = when {
             WakeWordService.liveActive -> "Gemini görüşmesi açık"
+            liveState == "GREETING" -> "Gemini yanıtlıyor"
             connecting -> "Gemini bağlanıyor"
             !WakeWordService.running -> "Dinleme kapalı"
             engine == "CAPTURING" -> "Jarvis dinliyor"
