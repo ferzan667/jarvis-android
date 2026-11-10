@@ -12,6 +12,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import okhttp3.OkHttpClient
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -20,6 +22,7 @@ import org.json.JSONObject
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.io.IOException
 
 /** One Gemini Live audio session. Audio stays in memory and is never written to disk. */
 class GeminiLiveClient(
@@ -41,11 +44,15 @@ class GeminiLiveClient(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val microphoneStarted = AtomicBoolean(false)
     private val responseReceived = AtomicBoolean(false)
+    @Volatile private var websocketOpened = false
     private var microphoneFallback: Runnable? = null
     private val connectionTimeout = Runnable {
         if (!closed.get()) {
-            onStatus("Gemini bağlantısı 20 saniyede kurulamadı. İnternet ve API anahtarını kontrol et.")
+            onStatus(if (websocketOpened)
+                "Gemini WebSocket açıldı fakat oturum onayı 20 saniyede gelmedi; API erişimi denetleniyor..."
+                else "Gemini WebSocket 20 saniyede açılamadı; ağ ve API erişimi denetleniyor...")
             stop()
+            verifyModelAccess()
         }
     }
     private var socket: WebSocket? = null
@@ -59,6 +66,11 @@ class GeminiLiveClient(
         val url = "$ENDPOINT?key=${java.net.URLEncoder.encode(apiKey, "UTF-8")}"
         socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (closed.get()) {
+                    webSocket.cancel()
+                    return
+                }
+                websocketOpened = true
                 onStatus("Gemini WebSocket açıldı; ses oturumu hazırlanıyor...")
                 val setup = JSONObject().put("setup", JSONObject()
                     .put("model", MODEL)
@@ -118,8 +130,9 @@ class GeminiLiveClient(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (closed.get()) return
                 // Exception text may contain the authenticated URL; only report class/status.
-                onStatus("Gemini bağlantı hatası: HTTP ${response?.code ?: "yok"}, ${t.javaClass.simpleName}")
+                onStatus("Gemini bağlantı hatası: ${describeHttp(response?.code)}, ${t.javaClass.simpleName}, aşama ${if (websocketOpened) "oturum" else "WebSocket"}")
                 stop()
+                if (response == null) verifyModelAccess()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -128,6 +141,37 @@ class GeminiLiveClient(
                 stop()
             }
         })
+    }
+
+    private fun verifyModelAccess() {
+        // A read-only model lookup distinguishes key/project errors from a WebSocket-specific failure.
+        val probeClient = OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build()
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-live?key=" +
+            java.net.URLEncoder.encode(apiKey, "UTF-8")
+        probeClient.newCall(Request.Builder().url(url).build()).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                onStatus("Gemini API denetimi ağa ulaşamadı: ${e.javaClass.simpleName}")
+                probeClient.dispatcher.executorService.shutdown()
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    onStatus(if (it.isSuccessful)
+                        "Gemini API anahtarı ve model erişimi doğrulandı; WebSocket bağlantısı kurulamadı."
+                        else "Gemini API erişimi reddedildi: ${describeHttp(it.code)}")
+                }
+                probeClient.dispatcher.executorService.shutdown()
+            }
+        })
+    }
+
+    private fun describeHttp(code: Int?): String = when (code) {
+        null -> "HTTP yanıtı yok"
+        400, 401 -> "HTTP $code (API anahtarı veya istek geçersiz)"
+        403 -> "HTTP 403 (API anahtarı/proje erişimi yok)"
+        404 -> "HTTP 404 (model erişimi yok)"
+        429 -> "HTTP 429 (kota veya hız sınırı)"
+        in 500..599 -> "HTTP $code (Google sunucu hatası)"
+        else -> "HTTP $code"
     }
 
     private fun startAudio(webSocket: WebSocket) {
@@ -221,7 +265,7 @@ class GeminiLiveClient(
         try { player?.stop(); player?.release() } catch (_: Exception) {}
         recorder = null
         player = null
-        socket?.close(1000, "done")
+        if (websocketOpened) socket?.close(1000, "done") else socket?.cancel()
         client.dispatcher.executorService.shutdown()
         onStopped()
     }

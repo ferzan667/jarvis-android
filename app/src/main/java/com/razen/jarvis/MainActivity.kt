@@ -62,7 +62,7 @@ class MainActivity : Activity() {
             setBackgroundColor(this@MainActivity.background)
         }
         root.addView(text("J A R V I S", 34, cyan, true))
-        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.3", 12, muted))
+        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.4", 12, muted))
         hud = JarvisHudView(this)
         root.addView(hud, LinearLayout.LayoutParams(-1, dp(260)))
 
