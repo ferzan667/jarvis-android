@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.tts.TextToSpeech
 import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup
@@ -43,7 +42,7 @@ class MainActivity : Activity() {
     private lateinit var scoreText: TextView
     private lateinit var logText: TextView
     private lateinit var keyInput: EditText
-    private var testTts: TextToSpeech? = null
+    private lateinit var hud: JarvisHudView
     private val refresh = object : Runnable {
         override fun run() {
             updateStatus()
@@ -61,8 +60,9 @@ class MainActivity : Activity() {
             setBackgroundColor(this@MainActivity.background)
         }
         root.addView(text("J A R V I S", 34, cyan, true))
-        root.addView(text("VOICE SYSTEM  /  0.6.0", 12, muted))
-        root.addView(space(24))
+        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.0", 12, muted))
+        hud = JarvisHudView(this)
+        root.addView(hud, LinearLayout.LayoutParams(-1, dp(260)))
 
         val liveCard = card()
         liveCard.addView(text("SİSTEM DURUMU", 12, cyan, true))
@@ -86,23 +86,6 @@ class MainActivity : Activity() {
         scoreText = text("JARVIS SKORU  —", 12, muted, true)
         liveCard.addView(scoreText)
         root.addView(liveCard)
-
-        root.addView(space(18))
-        root.addView(text("KONTROLLER", 12, cyan, true))
-        root.addView(space(8))
-        root.addView(actionButton("DİNLEMEYİ BAŞLAT", true) { startListening() })
-        root.addView(space(8))
-        root.addView(actionButton("GEMINI SESLİ GÖRÜŞMEYİ DENE", false) { startGeminiLive() })
-        root.addView(space(8))
-        root.addView(actionButton("GÖRÜŞMEYİ BİTİR", false) {
-            if (WakeWordService.running) startService(Intent(this, WakeWordService::class.java)
-                .setAction(WakeWordService.ACTION_STOP_LIVE))
-        })
-        root.addView(space(8))
-        root.addView(actionButton("DİNLEMEYİ DURDUR", false) {
-            stopService(Intent(this, WakeWordService::class.java))
-            message("Dinleme durduruldu")
-        })
 
         root.addView(space(22))
         val keyCard = card()
@@ -135,14 +118,13 @@ class MainActivity : Activity() {
         diagCard.addView(text("TANILAMA", 12, cyan, true))
         logText = text("Henüz kayıt yok", 13, muted)
         diagCard.addView(logText)
-        diagCard.addView(space(8))
-        diagCard.addView(actionButton("SES ÇIKIŞINI DENE", false) { testSpeech() })
         root.addView(diagCard)
         root.addView(space(16))
-        root.addView(text("Ekran kapalıyken dinleme için bildirim ve mikrofon izinlerini ver. Realme pil ayarlarında JARVIS için arka plan çalışmasına izin ver.", 12, muted))
+        root.addView(text("JARVIS açılınca dinleme kendiliğinden başlar. “Jarvis” algılanınca Gemini sesli görüşmesi otomatik bağlanır. Bildirimden dinlemeyi durdurabilirsin.", 12, muted))
         val scroll = ScrollView(this).apply { isFillViewport = true }
         scroll.addView(root)
         setContentView(scroll)
+        handler.post { startListening() }
     }
 
     override fun onStart() {
@@ -155,11 +137,6 @@ class MainActivity : Activity() {
         visible = false
         handler.removeCallbacks(refresh)
         super.onStop()
-    }
-
-    override fun onDestroy() {
-        testTts?.shutdown()
-        super.onDestroy()
     }
 
     private fun updateStatus() {
@@ -176,11 +153,12 @@ class MainActivity : Activity() {
         }
         stageText.text = "ALGILAYICI  /  $engine"
         val level = if (WakeWordService.running) pref.getInt("mic_level", 0) else 0
+        hud.update(level, WakeWordService.liveActive, WakeWordService.running)
         levelBar.progress = level
         levelText.text = "MİKROFON  $level%"
         val score = pref.getFloat("model_score", -1f)
         scoreText.text = if (score < 0 || !WakeWordService.running) "JARVIS SKORU  —"
-            else "JARVIS SKORU  ${"%.2f".format(Locale.US, score)} / 0.35"
+            else "JARVIS SKORU  ${"%.2f".format(Locale.US, score)} / 0.25"
         logText.text = pref.getString("status", "Henüz kayıt yok")
     }
 
@@ -188,26 +166,6 @@ class MainActivity : Activity() {
         getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
             .putString("status", value).apply()
         logText.text = value
-    }
-
-    private fun testSpeech() {
-        testTts?.shutdown()
-        message("Ses çıkışı hazırlanıyor")
-        testTts = TextToSpeech(this) { result -> runOnUiThread {
-            val engine = testTts
-            if (result != TextToSpeech.SUCCESS || engine == null) {
-                message("TTS başlatılamadı: $result")
-                return@runOnUiThread
-            }
-            val language = engine.setLanguage(Locale.forLanguageTag("tr-TR"))
-            if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
-                message("Türkçe TTS sesi eksik: $language")
-                return@runOnUiThread
-            }
-            val resultCode = engine.speak("Buyurun efendim.", TextToSpeech.QUEUE_FLUSH, null, "manual_tts")
-            message(if (resultCode == TextToSpeech.ERROR) "TTS konuşma hatası"
-                else "Ses çıkışı tetiklendi; duyulmazsa medya sesini kontrol et")
-        } }
     }
 
     private fun startListening() {
@@ -227,17 +185,6 @@ class MainActivity : Activity() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
             startWakeService(pendingStartLive)
         else message("Mikrofon izni gerekli")
-    }
-
-    private fun startGeminiLive() {
-        if (GeminiKeyStore.load(this).isNullOrBlank()) {
-            message("Önce Gemini API anahtarını kaydet")
-            return
-        }
-        pendingStartLive = true
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), permissionRequest)
-        else startWakeService(true)
     }
 
     private fun startWakeService(startLive: Boolean = false) {

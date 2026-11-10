@@ -61,6 +61,14 @@ class GeminiLiveClient(
                     if (message.has("setupComplete")) {
                         onStatus("Gemini Live bağlı; konuşabilirsiniz")
                         startAudio(webSocket)
+                        // The wake phrase gets an immediate spoken acknowledgement.
+                        val greeting = JSONObject().put("clientContent", JSONObject()
+                            .put("turns", org.json.JSONArray().put(JSONObject()
+                                .put("role", "user")
+                                .put("parts", org.json.JSONArray().put(JSONObject()
+                                    .put("text", "Bana yalnızca 'Buyurun efendim.' diye sesli yanıt ver; sonra komutumu dinle.")))))
+                            .put("turnComplete", true))
+                        webSocket.send(greeting.toString())
                     }
                     val content = message.optJSONObject("serverContent") ?: return
                     if (content.optBoolean("interrupted")) {
@@ -148,4 +156,5 @@ class GeminiLiveClient(
         onStopped()
     }
 }
+
 

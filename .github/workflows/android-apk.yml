@@ -89,11 +89,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if gh release view v0.6.0 >/dev/null 2>&1; then
-            gh release upload v0.6.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 --clobber
+          if gh release view v0.7.0 >/dev/null 2>&1; then
+            gh release upload v0.7.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 --clobber
           else
-            gh release create v0.6.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 \
-              --target "$GITHUB_SHA" --title "JARVIS 0.6.0 tanılama ve arayüz" \
+            gh release create v0.7.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 \
+              --target "$GITHUB_SHA" --title "JARVIS 0.7.0 otomatik dinleme ve NUI" \
               --notes "Gemini Live ve Jarvis uyandırma denemesi. Fiziksel cihazda henüz doğrulanmadı. API anahtarı kullanıcı tarafından telefonda girilir. Debug APK farklı CI imzasıyla önceki sürümlerin üstüne kurulamayabilir."
           fi
 

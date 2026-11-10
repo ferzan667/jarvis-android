@@ -1,13 +1,13 @@
-# JARVIS Android 0.6.0
+# JARVIS Android 0.7.0
 
-Telefonda tek başına çalışan JARVIS denemesi. Ekrandaki **DİNLEMEYİ BAŞLAT** ile mikrofon ön plan hizmeti açılır. Yerel model tek kelimelik “Jarvis” seslenişini algılarsa mikrofonu Gemini Live görüşmesine bırakır. ChatGPT uygulamasını veya güç düğmesini otomatik çalıştırmaz.
+Telefonda tek başına çalışan JARVIS denemesi. Uygulama açılınca izinleri alır ve mikrofon ön plan hizmetini kendiliğinden başlatır. Yerel model tek kelimelik “Jarvis” seslenişini algılarsa mikrofonu Gemini Live görüşmesine bırakır. ChatGPT uygulamasını veya güç düğmesini otomatik çalıştırmaz.
 
 ## Kurulum ve sıralı test
 
 1. [Releases](https://github.com/ferzan667/jarvis-android/releases) sayfasından `JARVIS-debug.apk` dosyasını indir. Önceki debug APK farklı imzayla kurulmuşsa kaldırıp yeniden kurman gerekebilir.
 2. Google AI Studio'da oluşturduğun Gemini API anahtarını yalnızca telefon uygulamasına gir ve **ANAHTARI KAYDET** düğmesine bas. Sohbete veya GitHub'a gönderme.
-3. Mikrofon iznini ver ve **GEMINI SESLİ GÖRÜŞMEYİ DENE** düğmesiyle konuşmayı ayrı test et. Tanılama alanında bağlantı hatası varsa önce bunu çöz.
-4. Görüşmeyi bitirip **DİNLEMEYİ BAŞLAT** düğmesine bas. **ALGILAYICI / CAPTURING** ve sesinle değişen **MİKROFON** yüzdesini görmeden “Jarvis” testine geçme. **JARVIS SKORU** 0.35 eşiğini geçerse görüşme açılır.
+3. Uygulamayı açıp mikrofon ve bildirim izinlerini ver. **ALGILAYICI / CAPTURING** ve sesinle değişen **MİKROFON** yüzdesini kontrol et. **JARVIS SKORU** 0.25 eşiğini geçerse Gemini görüşmesi kendiliğinden bağlanır.
+4. Bağlantı sağlanırsa sesli bir “Buyurun efendim” yanıtı istenir. Gemini bağlantı hatası varsa **TANILAMA** alanındaki metni paylaş.
 5. Ekran kapalı testini sonra yap. Realme pil ayarlarında JARVIS için arka plan çalışmasına izin ver. Android veya Realme hizmeti yine de sonlandırabilir; cihazda doğrulanmalıdır.
 
 ## Tanılama

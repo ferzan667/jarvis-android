@@ -61,7 +61,7 @@ class WakeWordService : Service() {
     private fun startDetector() {
         try {
             if (detector == null) detector = OpenWakeWord.Builder(applicationContext)
-                .setModelAsset("jarvis_v1.onnx").setThreshold(0.35f)
+                .setModelAsset("jarvis_v1.onnx").setThreshold(0.25f)
                 .setDebounceMs(5000L)
                 .setTelemetryListener(object : OpenWakeWord.OnTelemetryListener {
                     override fun onState(state: String) {
