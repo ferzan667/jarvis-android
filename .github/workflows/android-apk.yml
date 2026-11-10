@@ -78,8 +78,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create v0.3.3 JARVIS-debug.apk JARVIS-debug.apk.sha256 \
-            --target "$GITHUB_SHA" --title "JARVIS 0.3.3" \
+          gh release create v0.3.4 JARVIS-debug.apk JARVIS-debug.apk.sha256 \
+            --target "$GITHUB_SHA" --title "JARVIS 0.3.4" \
             --notes "Deneme sürümü. ChatGPT Voice kilit ekranından otomatik başlatılamaz. APK debug imzalıdır; farklı CI çalışmaları arasında güncelleme için önce eski sürümü kaldırmak gerekebilir."
 
 

@@ -8,16 +8,21 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.util.Locale
 
 class MainActivity : Activity() {
     companion object {
@@ -29,6 +34,7 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private val permissionRequest = 210
     private var receiverRegistered = false
+    private var testTts: TextToSpeech? = null
     private val refresh = object : Runnable {
         override fun run() {
             updateStatus()
@@ -57,17 +63,12 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(8, 15, 25))
         }
         root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
-        root.addView(label("0.3.3 • Tek kelime: JARVIS", 17, Color.LTGRAY))
+        root.addView(label("0.3.4 • Tek kelime: JARVIS", 17, Color.LTGRAY))
         status = label("Durum okunuyor", 19, Color.WHITE)
         root.addView(status)
 
         root.addView(button("1 — Dinlemeyi başlat") { startListening() })
-        root.addView(button("2 — Sesli yanıtı test et") {
-            if (WakeWordService.running) {
-                startService(Intent(this, WakeWordService::class.java)
-                    .setAction(WakeWordService.ACTION_TEST))
-            } else status.text = "Önce dinlemeyi başlat"
-        })
+        root.addView(button("2 — Sesli yanıtı test et") { testSpeech() })
         root.addView(button("3 — ChatGPT'yi aç") { openChatGpt() })
         root.addView(button("Dinlemeyi durdur") {
             stopService(Intent(this, WakeWordService::class.java))
@@ -118,6 +119,12 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
+    override fun onDestroy() {
+        testTts?.shutdown()
+        testTts = null
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -135,7 +142,41 @@ class MainActivity : Activity() {
         status.text = if (WakeWordService.running) "Servis açık • mikrofon durumu için tanılamayı kontrol edin" else "Servis kapalı"
         val pref = getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
         detail.text = "Tanılama: " + pref.getString("status", "Henüz kayıt yok") +
-            "\nTelefonunda üst çubukta mikrofon kullanımı simgesi görünüyor mu?"
+            "\nMikrofon kaydı: " + microphoneState()
+    }
+
+    private fun microphoneState(): String {
+        if (Build.VERSION.SDK_INT < 29) return "Android sürümü nedeniyle ölçülemiyor"
+        return try {
+            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            if (audio.activeRecordingConfigurations.any { it.clientUid == Process.myUid() })
+                "etkin" else "etkin değil"
+        } catch (e: Exception) { "ölçülemedi: ${e.javaClass.simpleName}" }
+    }
+
+    private fun testSpeech() {
+        testTts?.shutdown()
+        status.text = "TTS hazırlanıyor..."
+        testTts = TextToSpeech(this) { result -> runOnUiThread {
+            val engine = testTts
+            if (result != TextToSpeech.SUCCESS || engine == null) {
+                status.text = "TTS başlatılamadı (kod $result). Telefonun metin okuma motorunu kontrol edin."
+                return@runOnUiThread
+            }
+            val language = engine.setLanguage(Locale.forLanguageTag("tr-TR"))
+            if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                status.text = "Türkçe TTS sesi eksik veya desteklenmiyor (kod $language)."
+                return@runOnUiThread
+            }
+            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) { runOnUiThread { status.text = "TTS konuşuyor..." } }
+                override fun onDone(utteranceId: String?) { runOnUiThread { status.text = "TTS tamamlandı. Ses duyulmadıysa medya sesini kontrol edin." } }
+                @Deprecated("Deprecated by Android")
+                override fun onError(utteranceId: String?) { runOnUiThread { status.text = "TTS konuşma hatası." } }
+            })
+            if (engine.speak("Buyurun efendim.", TextToSpeech.QUEUE_FLUSH, null, "manual_tts") == TextToSpeech.ERROR)
+                status.text = "TTS speak() hata döndürdü."
+        } }
     }
 
     private fun startListening() {

@@ -55,7 +55,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         try {
             detector = OpenWakeWord.Builder(applicationContext)
                 .setModelAsset("jarvis_v1.onnx")
-                .setThreshold(0.50f)
+                .setThreshold(0.35f)
                 .setDebounceMs(5000L)
                 .build()
             detector?.start { confidence -> wakeDetected(confidence) }
