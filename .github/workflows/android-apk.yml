@@ -4,9 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ['v*']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -50,6 +51,7 @@ jobs:
             "https://raw.githubusercontent.com/fwartner/home-assistant-wakewords-collection/main/en/jarvis/jarvis_v1.onnx" \
             -o app/src/main/assets/jarvis_v1.onnx
           test "$(stat -c%s app/src/main/assets/jarvis_v1.onnx)" -eq 208134
+          echo "Model SHA256:"
           sha256sum app/src/main/assets/jarvis_v1.onnx
 
       - name: Compile APK
@@ -58,15 +60,26 @@ jobs:
       - name: Name and hash APK
         shell: bash
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk JARVIS-Hey-Jarvis-debug.apk
-          sha256sum JARVIS-Hey-Jarvis-debug.apk > JARVIS-Hey-Jarvis-debug.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk JARVIS-debug.apk
+          sha256sum JARVIS-debug.apk > JARVIS-debug.apk.sha256
 
       - name: Publish APK for download
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Android-APK
           path: |
-            JARVIS-Hey-Jarvis-debug.apk
-            JARVIS-Hey-Jarvis-debug.apk.sha256
+            JARVIS-debug.apk
+            JARVIS-debug.apk.sha256
           retention-days: 30
           if-no-files-found: error
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${GITHUB_REF_NAME}" JARVIS-debug.apk JARVIS-debug.apk.sha256 \
+            --title "JARVIS ${GITHUB_REF_NAME}" \
+            --notes "Deneme sürümü. ChatGPT Voice kilit ekranından otomatik başlatılamaz. APK debug imzalıdır; farklı CI çalışmaları arasında güncelleme için önce eski sürümü kaldırmak gerekebilir."
+

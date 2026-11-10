@@ -38,6 +38,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
     private var ttsReady = false
     private var busy = false
     private var lastWake = 0L
+    private var detections = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -52,11 +53,11 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         try {
             detector = OpenWakeWord.Builder(applicationContext)
                 .setModelAsset("jarvis_v1.onnx")
-                .setThreshold(0.40f)
+                .setThreshold(0.50f)
                 .setDebounceMs(5000L)
                 .build()
             detector?.start { confidence -> wakeDetected(confidence) }
-            saveStatus("Jarvis modeli başlatıldı. Tek kelime: JARVIS")
+            saveStatus("Algılayıcı iş parçacığı başlatıldı; model ve mikrofon henüz doğrulanmadı. Mikrofon göstergesini ve Logcat'i kontrol edin.")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start wake word engine", e)
             saveStatus("Ses algılama hatası: ${e.javaClass.simpleName}: ${e.message}")
@@ -84,7 +85,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         val lang = engine.setLanguage(Locale.forLanguageTag("tr-TR"))
         ttsReady = lang != TextToSpeech.LANG_NOT_SUPPORTED &&
             lang != TextToSpeech.LANG_MISSING_DATA
-        if (!ttsReady) saveStatus("Türkçe TTS yüklü değil; algılama çalışabilir ancak sesli yanıt olmayabilir.")
+        if (!ttsReady) saveStatus("Türkçe TTS desteklenmiyor veya dil verisi eksik (kod $lang). Telefonun TTS ayarlarını kontrol edin.")
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
             override fun onDone(utteranceId: String?) {
@@ -92,6 +93,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
             }
             @Deprecated("Deprecated by Android")
             override fun onError(utteranceId: String?) {
+                saveStatus("TTS konuşma hatası; konuşma motorunu ve medya sesini kontrol edin.")
                 handler.postDelayed({ resumeWakeListener() }, 650L)
             }
         })
@@ -103,7 +105,8 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         lastWake = SystemClock.elapsedRealtime()
         try { detector?.stop() } catch (e: Exception) { Log.w(TAG, "Pause failed", e) }
         Log.i(TAG, "Jarvis detected: $confidence")
-        saveStatus("JARVIS algılandı! Güven: ${(confidence * 100).toInt()}%")
+        detections++
+        saveStatus("JARVIS algılandı! Skor: ${"%.2f".format(Locale.US, confidence)}; bu oturumda: $detections")
         notifyResponse("Buyurun efendim", "ChatGPT'yi açmak için bildirime dokunun")
         // Activity launch from background/lock screen is not allowed on standard Android.
         // When this app is visible, route to the user's default assistant and release our mic.
@@ -123,6 +126,9 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
                 handler.postDelayed({ resumeWakeListener() }, 7000L)
                 return
             }
+            saveStatus("TTS speak() hata döndürdü. TTS motorunu ve Türkçe ses paketini kontrol edin.")
+        } else {
+            saveStatus("TTS hazır değil. Türkçe ses paketi veya TTS motoru kontrol edilmeli.")
         }
         handler.postDelayed({ resumeWakeListener() }, 1500L)
     }
@@ -152,7 +158,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         ).apply { description = "Mikrofon dinlemesi etkin olduğunda görünür" })
         manager.createNotificationChannel(NotificationChannel(
             ALERT_CHANNEL, "JARVIS yanıtları", NotificationManager.IMPORTANCE_HIGH
-        ).apply { description = "Hey Jarvis algılandığında bildirim gösterir" })
+        ).apply { description = "Jarvis algılandığında bildirim gösterir" })
     }
 
     private fun chatGptIntent(): PendingIntent {
@@ -176,7 +182,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         return Notification.Builder(this, LISTEN_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("JARVIS dinliyor")
-            .setContentText("Hey Jarvis diyerek seslenebilirsiniz")
+            .setContentText("Jarvis diyerek seslenebilirsiniz")
             .setContentIntent(open)
             .setOngoing(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -206,3 +212,4 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         super.onDestroy()
     }
 }
+

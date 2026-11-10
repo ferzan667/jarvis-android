@@ -58,7 +58,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(8, 15, 25))
         }
         root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
-        root.addView(label("0.3.0 • Tek kelime: JARVIS", 17, Color.LTGRAY))
+        root.addView(label("0.3.1 • Tek kelime: JARVIS", 17, Color.LTGRAY))
         status = label("Durum okunuyor", 19, Color.WHITE)
         root.addView(status)
 
@@ -120,7 +120,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateStatus() {
-        status.text = if (WakeWordService.running) "Servis açık • JARVIS dinliyor" else "Servis kapalı"
+        status.text = if (WakeWordService.running) "Servis açık • mikrofon durumu için tanılamayı kontrol edin" else "Servis kapalı"
         val pref = getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
         detail.text = "Tanılama: " + pref.getString("status", "Henüz kayıt yok") +
             "\nTelefonunda üst çubukta mikrofon kullanımı simgesi görünüyor mu?"
@@ -192,3 +192,4 @@ class MainActivity : Activity() {
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
+
