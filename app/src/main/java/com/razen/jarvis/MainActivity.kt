@@ -60,7 +60,7 @@ class MainActivity : Activity() {
             setBackgroundColor(this@MainActivity.background)
         }
         root.addView(text("J A R V I S", 34, cyan, true))
-        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.0", 12, muted))
+        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.1", 12, muted))
         hud = JarvisHudView(this)
         root.addView(hud, LinearLayout.LayoutParams(-1, dp(260)))
 
@@ -142,8 +142,11 @@ class MainActivity : Activity() {
     private fun updateStatus() {
         val pref = getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
         val engine = pref.getString("engine_state", "BEKLEMEDE") ?: "BEKLEMEDE"
+        val liveState = pref.getString("live_state", "IDLE")
+        val connecting = WakeWordService.running && liveState == "CONNECTING"
         stateText.text = when {
             WakeWordService.liveActive -> "Gemini görüşmesi açık"
+            connecting -> "Gemini bağlanıyor"
             !WakeWordService.running -> "Dinleme kapalı"
             engine == "CAPTURING" -> "Jarvis dinliyor"
             engine == "MODEL_LOADING" -> "Model yükleniyor"
@@ -151,13 +154,16 @@ class MainActivity : Activity() {
             engine.startsWith("ERROR") || engine.contains("ERROR") -> "Algılama hatası"
             else -> "Başlatılıyor"
         }
-        stageText.text = "ALGILAYICI  /  $engine"
-        val level = if (WakeWordService.running) pref.getInt("mic_level", 0) else 0
+        stageText.text = if (connecting || WakeWordService.liveActive)
+            "ALGILAYICI DURAKLATILDI  /  GEMINI ${liveState ?: "IDLE"}"
+            else "ALGILAYICI  /  $engine"
+        val level = if (WakeWordService.running && !connecting && !WakeWordService.liveActive)
+            pref.getInt("mic_level", 0) else 0
         hud.update(level, WakeWordService.liveActive, WakeWordService.running)
         levelBar.progress = level
         levelText.text = "MİKROFON  $level%"
         val score = pref.getFloat("model_score", -1f)
-        scoreText.text = if (score < 0 || !WakeWordService.running) "JARVIS SKORU  —"
+        scoreText.text = if (score < 0 || !WakeWordService.running || connecting || WakeWordService.liveActive) "JARVIS SKORU  —"
             else "JARVIS SKORU  ${"%.2f".format(Locale.US, score)} / 0.25"
         logText.text = pref.getString("status", "Henüz kayıt yok")
     }

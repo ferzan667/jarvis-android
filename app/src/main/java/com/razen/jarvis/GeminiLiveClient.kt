@@ -8,6 +8,8 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -24,6 +26,7 @@ class GeminiLiveClient(
     private val context: Context,
     private val apiKey: String,
     private val onStatus: (String) -> Unit,
+    private val onConnected: () -> Unit,
     private val onStopped: () -> Unit,
 ) {
     companion object {
@@ -35,16 +38,25 @@ class GeminiLiveClient(
     private val closed = AtomicBoolean(false)
     private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
     private val playback = LinkedBlockingQueue<ByteArray>(200)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val connectionTimeout = Runnable {
+        if (!closed.get()) {
+            onStatus("Gemini bağlantısı 20 saniyede kurulamadı. İnternet ve API anahtarını kontrol et.")
+            stop()
+        }
+    }
     private var socket: WebSocket? = null
     @Volatile private var recorder: AudioRecord? = null
     @Volatile private var player: AudioTrack? = null
 
     fun start() {
         onStatus("Gemini Live bağlanıyor...")
+        mainHandler.postDelayed(connectionTimeout, 20_000)
         // Do not log this URL: it contains the user's API key.
         val url = "$ENDPOINT?key=${java.net.URLEncoder.encode(apiKey, "UTF-8")}"
         socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                onStatus("Gemini WebSocket açıldı; ses oturumu hazırlanıyor...")
                 val setup = JSONObject().put("setup", JSONObject()
                     .put("model", MODEL)
                     .put("generationConfig", JSONObject()
@@ -59,8 +71,11 @@ class GeminiLiveClient(
                 try {
                     val message = JSONObject(text)
                     if (message.has("setupComplete")) {
-                        onStatus("Gemini Live bağlı; konuşabilirsiniz")
+                        mainHandler.removeCallbacks(connectionTimeout)
                         startAudio(webSocket)
+                        if (closed.get()) return
+                        onConnected()
+                        onStatus("Gemini Live bağlı; konuşabilirsiniz")
                         // The wake phrase gets an immediate spoken acknowledgement.
                         val greeting = JSONObject().put("clientContent", JSONObject()
                             .put("turns", org.json.JSONArray().put(JSONObject()
@@ -87,12 +102,14 @@ class GeminiLiveClient(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (closed.get()) return
                 // Exception text may contain the authenticated URL; only report class/status.
                 onStatus("Gemini bağlantı hatası: HTTP ${response?.code ?: "yok"}, ${t.javaClass.simpleName}")
                 stop()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (closed.get()) return
                 onStatus("Gemini görüşmesi kapandı (kod $code)")
                 stop()
             }
@@ -146,6 +163,7 @@ class GeminiLiveClient(
 
     fun stop() {
         if (!closed.compareAndSet(false, true)) return
+        mainHandler.removeCallbacks(connectionTimeout)
         playback.clear()
         try { recorder?.stop(); recorder?.release() } catch (_: Exception) {}
         try { player?.stop(); player?.release() } catch (_: Exception) {}

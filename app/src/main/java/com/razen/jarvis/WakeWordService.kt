@@ -115,6 +115,9 @@ class WakeWordService : Service() {
         if (busy) return
         busy = true
         try { detector?.stop() } catch (e: Exception) { Log.w(TAG, "Pause failed", e) }
+        getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+            .putString("engine_state", "PAUSED_FOR_GEMINI")
+            .putInt("mic_level", 0).putFloat("model_score", -1f).apply()
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .notify(LISTEN_ID, listeningNotification(paused = true))
     }
@@ -130,14 +133,22 @@ class WakeWordService : Service() {
         }
         live = GeminiLiveClient(this, key,
             onStatus = { message -> saveStatus(message) },
+            onConnected = {
+                liveActive = true
+                getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+                    .putString("live_state", "CONNECTED").apply()
+            },
             onStopped = {
                 handler.post {
                     live = null
                     liveActive = false
+                    getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+                        .putString("live_state", "IDLE").apply()
                     if (running) handler.postDelayed({ resumeWakeListener() }, 500L)
                 }
             })
-        liveActive = true
+        getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+            .putString("live_state", "CONNECTING").apply()
         live?.start()
     }
 
