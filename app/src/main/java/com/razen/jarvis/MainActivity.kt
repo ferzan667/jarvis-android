@@ -2,60 +2,121 @@ package com.razen.jarvis
 
 import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var detail: TextView
+    private val handler = Handler(Looper.getMainLooper())
     private val permissionRequest = 210
+    private var receiverRegistered = false
+    private val refresh = object : Runnable {
+        override fun run() {
+            updateStatus()
+            handler.postDelayed(this, 1200)
+        }
+    }
+    private val wakeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == WakeWordService.ACTION_WAKE) {
+                // An Activity may launch another app while the user is actively viewing it.
+                // On the lock screen, only the notification is shown; it cannot unlock the phone.
+                openChatGpt()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(8, 15, 25)
         window.navigationBarColor = Color.rgb(8, 15, 25)
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(76), dp(24), dp(24))
+            setPadding(dp(24), dp(48), dp(24), dp(24))
             setBackgroundColor(Color.rgb(8, 15, 25))
         }
-        root.addView(label("J A R V I S", 32, Color.rgb(91, 226, 255)))
-        root.addView(label("Hey Jarvis • Yerel ses algılama", 15, Color.LTGRAY))
-        status = label("Kapalı", 18, Color.WHITE)
+        root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
+        root.addView(label("0.3.0 • Tek kelime: JARVIS", 17, Color.LTGRAY))
+        status = label("Durum okunuyor", 19, Color.WHITE)
         root.addView(status)
-        root.addView(Button(this).apply {
-            text = "Dinlemeyi başlat"
-            setOnClickListener { startListening() }
-        }, buttonParams())
-        root.addView(Button(this).apply {
-            text = "Dinlemeyi durdur"
-            setOnClickListener {
-                stopService(Intent(this@MainActivity, WakeWordService::class.java))
-                status.text = "Durduruldu"
-            }
-        }, buttonParams())
+
+        root.addView(button("1 — Dinlemeyi başlat") { startListening() })
+        root.addView(button("2 — Sesli yanıtı test et") {
+            if (WakeWordService.running) {
+                startService(Intent(this, WakeWordService::class.java)
+                    .setAction(WakeWordService.ACTION_TEST))
+            } else status.text = "Önce dinlemeyi başlat"
+        })
+        root.addView(button("3 — ChatGPT sesli asistanını aç") { openChatGpt() })
+        root.addView(button("Dinlemeyi durdur") {
+            stopService(Intent(this, WakeWordService::class.java))
+            status.text = "Durduruldu"
+        })
+
+        detail = label("", 14, Color.rgb(171, 210, 225))
+        root.addView(detail)
         root.addView(label(
-            "Uygulama açıkken dinlemeyi başlat. Telefon kilitliyken 'Hey Jarvis' de. Algılanırsa 'Buyurun efendim' yanıtını alırsın.",
-            15, Color.LTGRAY
+            "Kullanım: 1'e bas, telefonu açıkken ya da kilitliyken 'Jarvis' de. " +
+            "Uygulama açıkken algılarsa ChatGPT'yi açmayı dener. " +
+            "Ekran kilitliyken Android'in güvenlik kuralları nedeniyle bildirim kullanılır.",
+            14, Color.LTGRAY
         ))
         root.addView(label(
-            "ChatGPT'ye geçiş için bildirime dokunman gerekir. Android kilidini aşamaz veya ChatGPT'nin sesli modunu kendiliğinden açamaz.",
-            13, Color.rgb(170, 180, 195)
+            "ChatGPT → Ayarlar → Ses → Sesle Başlat özelliğini aç. " +
+            "ChatGPT'nin Android'de varsayılan asistan olarak seçilmesi " +
+            "uygun cihazlarda sesli asistan açılışını kolaylaştırabilir. " +
+            "Bu APK ChatGPT kilidini açamaz, sesli görüşmeyi her durumda doğrudan başlatamaz.",
+            13, Color.rgb(155, 175, 190)
         ))
-        setContentView(root)
+        val scroll = ScrollView(this)
+        scroll.addView(root)
+        setContentView(scroll)
     }
 
-    override fun onResume() {
-        super.onResume()
-        status.text = if (WakeWordService.running) "Dinliyor • Hey Jarvis" else "Kapalı"
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(WakeWordService.ACTION_WAKE)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(wakeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(wakeReceiver, filter)
+        }
+        receiverRegistered = true
+        handler.post(refresh)
+    }
+
+    override fun onStop() {
+        if (receiverRegistered) {
+            unregisterReceiver(wakeReceiver)
+            receiverRegistered = false
+        }
+        handler.removeCallbacks(refresh)
+        super.onStop()
+    }
+
+    private fun updateStatus() {
+        status.text = if (WakeWordService.running) "Servis açık • JARVIS dinliyor" else "Servis kapalı"
+        val pref = getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
+        detail.text = "Tanılama: " + pref.getString("status", "Henüz kayıt yok") +
+            "\nTelefonunda üst çubukta mikrofon kullanımı simgesi görünüyor mu?"
     }
 
     private fun startListening() {
@@ -85,6 +146,27 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun openChatGpt() {
+        // ACTION_ASSIST routes to the user's chosen system digital assistant.
+        // ChatGPT must be selected in Android Settings for it to open ChatGPT Voice.
+        try {
+            val assist = Intent(Intent.ACTION_ASSIST)
+            if (assist.resolveActivity(packageManager) != null) {
+                startActivity(assist)
+                return
+            }
+        } catch (_: Exception) { }
+        try {
+            val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(launch)
+            } else status.text = "ChatGPT uygulaması yüklü değil"
+        } catch (e: Exception) {
+            status.text = "ChatGPT açılamadı: ${e.javaClass.simpleName}"
+        }
+    }
+
     private fun label(value: String, sp: Int, color: Int) = TextView(this).apply {
         text = value
         textSize = sp.toFloat()
@@ -92,8 +174,12 @@ class MainActivity : Activity() {
         gravity = Gravity.CENTER
         setPadding(0, dp(12), 0, dp(12))
     }
-    private fun buttonParams() = LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-    )
+    private fun button(label: String, action: () -> Unit) = Button(this).apply {
+        text = label
+        setOnClickListener { action() }
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
