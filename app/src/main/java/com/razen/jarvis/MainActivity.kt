@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -20,6 +21,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 class MainActivity : Activity() {
+    companion object {
+        @Volatile var visible: Boolean = false
+            private set
+    }
     private lateinit var status: TextView
     private lateinit var detail: TextView
     private val handler = Handler(Looper.getMainLooper())
@@ -92,6 +97,7 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        visible = true
         val filter = IntentFilter(WakeWordService.ACTION_WAKE)
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(wakeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -104,6 +110,7 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        visible = false
         if (receiverRegistered) {
             unregisterReceiver(wakeReceiver)
             receiverRegistered = false
@@ -150,8 +157,10 @@ class MainActivity : Activity() {
         // ACTION_ASSIST routes to the user's chosen system digital assistant.
         // ChatGPT must be selected in Android Settings for it to open ChatGPT Voice.
         try {
+            val defaultAssistant = Settings.Secure.getString(contentResolver, "assistant") ?: ""
             val assist = Intent(Intent.ACTION_ASSIST)
-            if (assist.resolveActivity(packageManager) != null) {
+            if (defaultAssistant.contains("com.openai.chatgpt") &&
+                assist.resolveActivity(packageManager) != null) {
                 startActivity(assist)
                 return
             }
