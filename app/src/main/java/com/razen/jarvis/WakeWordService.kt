@@ -38,6 +38,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var busy = false
+    private var handoffPending = false
     private var lastWake = 0L
     private var detections = 0
 
@@ -109,15 +110,27 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         detections++
         saveStatus("JARVIS algılandı! Skor: ${"%.2f".format(Locale.US, confidence)}; bu oturumda: $detections")
         notifyResponse("Buyurun efendim", "ChatGPT sesli sohbetine geçmek için dokunun")
-        // Activity launch from background/lock screen is not allowed on standard Android.
-        // When this app is visible, route to the user's default assistant and release our mic.
+        // Foreground Activity can request the default assistant after releasing our mic.
         if (MainActivity.visible && !manualTest) {
+            handoffPending = true
             handler.postDelayed({
                 if (running) {
                     sendBroadcast(Intent(ACTION_WAKE).setPackage(packageName))
                     stopSelf()
                 }
             }, 1300L)
+        } else if (!manualTest && AssistantHandoff.chatGptOwnsRole(this)) {
+            handoffPending = true
+            // An ordinary app cannot bypass background launch or keyguard restrictions.
+            // Request the official assist action once, then leave the notification as fallback.
+            handler.postDelayed({
+                if (running) {
+                    val requested = AssistantHandoff.request(this)
+                    saveStatus(if (requested) "Android asistan çağrısı istendi; açılışı cihazda doğrulayın."
+                        else "Asistan çağrısı reddedildi; bildirimden geçin.")
+                    stopSelf()
+                }
+            }, 1800L)
         }
         if (ttsReady) {
             val spoken = tts?.speak(
@@ -135,7 +148,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun resumeWakeListener() {
-        if (!running || !busy) return
+        if (!running || !busy || handoffPending) return
         busy = false
         try {
             detector?.start { confidence -> wakeDetected(confidence) }

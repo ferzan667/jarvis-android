@@ -1,4 +1,4 @@
-# JARVIS Android 0.3.2 — deneme sürümü
+# JARVIS Android 0.3.3 — deneme sürümü
 
 **Ne değişti?**
 - "Hey Jarvis" yerine yalnızca **"Jarvis"** sözünü algılaması için topluluk tarafından eğitilmiş `jarvis_v1.onnx` kullanılıyor.
@@ -6,20 +6,20 @@
 - Ses algılama motorunun son çalışma durumu "Tanılama" alanında gösteriliyor.
 - Algılama skoru ve oturum içi algılama sayısı gösteriliyor. Algılayıcı kütüphanesi mikrofonu ayrı iş parçacığında açtığı ve hata geri çağrısı sunmadığı için ilk "başlatıldı" mesajı gerçek mikrofon doğrulaması sayılmaz.
 - Yanlış tetiklemeyi azaltmak için eşik 0,50. Kaçırma oranı telefonda ölçülmeden doğru eşik kesinleşmez.
-- JARVIS ekranı görünürken algılama olursa ChatGPT uygulamasını açar. ChatGPT'de **Sesle Başlat** açıksa yeni/boş sohbet Voice ile başlayabilir.
-- Ekran kilitliyken güvenlik kısıtları nedeniyle **başka bir uygulama otomatik olarak açılmaz**; kullanıcı bildirim üzerinden ChatGPT'ye geçebilir.
+- ChatGPT Android varsayılan asistanıysa JARVIS algılamadan sonra resmî `ACTION_ASSIST` çağrısını dener. Uygulama görünürken bu çağrı asistanı açabilir.
+- Ekran kilitliyken aynı çağrı deneysel olarak istenir. Android arka plandan etkinlik açmayı engelleyebilir; isteğin gönderilmiş olması ChatGPT Voice'un açıldığını doğrulamaz. Bildirim yedek geçiştir.
 
-**Bu, ekran kilitliyken ChatGPT sesli modunu başlatabilen bir uygulama değildir.**
-Android standart uygulamaların kilitli/arka plan ekranından başka bir uygulamanın etkinliğini otomatik açmasını kısıtlar. ChatGPT için güvenilir, kamuya açık bir üçüncü taraf "sesli modu şimdi başlat" API'si bulunmadığından bu işlemi garanti etmiyoruz.
+**Kilit ekranından ChatGPT Voice'un otomatik başlaması henüz doğrulanmadı.**
+Android standart uygulamaların kilitli/arka plan ekranından başka bir uygulamanın etkinliğini otomatik açmasını kısıtlar. ChatGPT için kamuya açık bir üçüncü taraf "sesli modu şimdi başlat" API'si bulunmadığından bu işlemi garanti etmiyoruz.
 
 ## Telefonda sıfırdan test
 1. Önceki 0.2.x debug sürümünü kaldırın. GitHub Actions debug derlemelerinin imzası farklı olabilir; yükleme/güncelleme başarısızsa eskisini kaldırın.
-2. [Releases](https://github.com/ferzan667/jarvis-android/releases) altında 0.3.2 varsa `JARVIS-debug.apk` dosyasını doğrudan indirin. Yoksa [Actions](https://github.com/ferzan667/jarvis-android/actions) sekmesindeki son **başarılı** derlemeden `JARVIS-Android-APK` ZIP'ini indirip içindeki APK'yı yükleyin.
+2. [Releases](https://github.com/ferzan667/jarvis-android/releases) altında 0.3.3 varsa `JARVIS-debug.apk` dosyasını doğrudan indirin. Yoksa [Actions](https://github.com/ferzan667/jarvis-android/actions) sekmesindeki son **başarılı** derlemeden `JARVIS-Android-APK` ZIP'ini indirip içindeki APK'yı yükleyin.
 3. JARVIS'i açın, mikrofon ve bildirim izinlerini verin.
 4. **Dinlemeyi başlat** düğmesine basın.
 5. **Sesli yanıtı test et** düğmesine basın; "Buyurun efendim" demeli. Bu test başarısızsa ses sentezi / Türkçe ses paketi ayarlarını kontrol edin.
-6. Uygulama açıkken normal ses tonuyla tek kelime **"Jarvis"** deyin. Ekranda "JARVIS algılandı!" ve skor yazmasını bekleyin. ChatGPT açılır; Voice'un otomatik başlaması ChatGPT'nin **Sesle Başlat** ayarına ve yeni/boş sohbet açılmasına bağlıdır.
-7. Telefonu kilitleyip tekrar "Jarvis" deyin. Android marka/model/pil yönetimi politikası nedeniyle servis mikrofona erişimini kaybedebilir.
+6. Uygulama açıkken normal ses tonuyla tek kelime **"Jarvis"** deyin. Ekranda "JARVIS algılandı!" ve skor yazmasını bekleyin. ChatGPT asistan arayüzü açılıyor mu, doğrudan Voice başlıyor mu ayrı ayrı not edin.
+7. Telefonu kilitleyip tekrar "Jarvis" deyin. Sesli yanıt, ChatGPT asistan açılışı ve Voice başlangıcını ayrı ayrı not edin. Android arka plan kuralı çağrıyı engelleyebilir. Denemeden sonra servis durur; yeniden denemek için JARVIS'te Dinlemeyi başlat'a basın.
 8. Sonucu ve JARVIS ekranındaki **Tanılama** metnini paylaşın. Ekranda aktif mikrofon simgesi yoksa uygulamanın arka plan/izin ayarlarını kontrol edin.
 
 ### Logcat ile mikrofon ayrımı

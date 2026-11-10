@@ -57,7 +57,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(8, 15, 25))
         }
         root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
-        root.addView(label("0.3.2 • Tek kelime: JARVIS", 17, Color.LTGRAY))
+        root.addView(label("0.3.3 • Tek kelime: JARVIS", 17, Color.LTGRAY))
         status = label("Durum okunuyor", 19, Color.WHITE)
         root.addView(status)
 
@@ -78,14 +78,14 @@ class MainActivity : Activity() {
         root.addView(detail)
         root.addView(label(
             "Kullanım: 1'e bas, telefonu açıkken ya da kilitliyken 'Jarvis' de. " +
-            "Uygulama açıkken algılarsa ChatGPT'yi açmayı dener. " +
-            "Ekran kilitliyken Android'in güvenlik kuralları nedeniyle bildirim kullanılır.",
+            "ChatGPT varsayılan asistan ise Android asistan çağrısı denenir. " +
+            "Kilitliyken Android çağrıyı engelleyebilir; bildirim yedek geçiştir.",
             14, Color.LTGRAY
         ))
         root.addView(label(
             "ChatGPT → Ayarlar → Ses → Sesle Başlat özelliğini aç. " +
             "ChatGPT yeni/boş sohbete açılırsa sesli görüşme otomatik başlayabilir. " +
-            "Kilitliyken yeni görüşme otomatik başlatılamaz; bildirime dokunup kilidi açın.",
+            "Kilitliyken otomatik açılış cihazda test edilmelidir; gerekirse bildirime dokunup kilidi açın.",
             13, Color.rgb(155, 175, 190)
         ))
         val scroll = ScrollView(this)
@@ -166,9 +166,11 @@ class MainActivity : Activity() {
     }
 
     private fun openChatGpt() {
-        // ChatGPT's documented Start with Voice setting can start Voice on a new/empty chat.
-        // There is no public third-party intent that guarantees Voice from a locked screen.
         stopService(Intent(this, WakeWordService::class.java))
+        if (AssistantHandoff.request(this)) {
+            status.text = "Android varsayılan asistan çağrısı gönderildi"
+            return
+        }
         try {
             val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
             if (launch != null) {
