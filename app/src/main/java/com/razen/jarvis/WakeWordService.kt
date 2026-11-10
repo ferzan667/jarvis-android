@@ -74,14 +74,16 @@ class WakeWordService : Service() {
                         }
                     }
 
-                    override fun onFrame(level: Int, score: Float) {
+                    override fun onFrame(level: Int, score: Float, peak: Float) {
                         getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
                             .putInt("mic_level", level)
-                            .putFloat("model_score", if (score.isFinite()) score else -1f).apply()
+                            .putFloat("model_score", if (score.isFinite()) score else -1f)
+                            .putFloat("peak_score", if (peak.isFinite()) peak else -1f).apply()
                     }
                 }).build()
             detector?.start { confidence -> wakeDetected(confidence) }
-            saveStatus("Algılayıcı iş parçacığı başlatıldı; model ve mikrofon henüz doğrulanmadı. Mikrofon göstergesini ve Logcat'i kontrol edin.")
+            getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+                .putString("engine_state", "STARTING").apply()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start wake word engine", e)
             saveStatus("Ses algılama hatası: ${e.javaClass.simpleName}: ${e.message}")
@@ -107,6 +109,10 @@ class WakeWordService : Service() {
         pauseForLive()
         Log.i(TAG, "Jarvis detected: $confidence")
         detections++
+        getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+            .putLong("last_wake_at", System.currentTimeMillis())
+            .putFloat("last_wake_score", confidence)
+            .putInt("wake_count", detections).apply()
         saveStatus("JARVIS algılandı! Skor: ${"%.2f".format(Locale.US, confidence)}; bu oturumda: $detections")
         startGemini()
     }
@@ -137,6 +143,9 @@ class WakeWordService : Service() {
                     getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
                         .putString("live_state", "GREETING").apply()
                 }
+                getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE).edit()
+                    .putString("gemini_status", message)
+                    .putLong("gemini_updated_at", System.currentTimeMillis()).apply()
                 saveStatus(message)
             },
             onConnected = {

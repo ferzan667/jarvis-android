@@ -1,4 +1,4 @@
-# JARVIS Android 0.7.2
+# JARVIS Android 0.7.3
 
 Telefonda tek başına çalışan JARVIS denemesi. Uygulama açılınca izinleri alır ve mikrofon ön plan hizmetini kendiliğinden başlatır. Yerel model tek kelimelik “Jarvis” seslenişini algılarsa mikrofonu Gemini Live görüşmesine bırakır. ChatGPT uygulamasını veya güç düğmesini otomatik çalıştırmaz.
 
@@ -17,6 +17,8 @@ Telefonda tek başına çalışan JARVIS denemesi. Uygulama açılınca izinleri
 Gemini bağlanırken algılayıcı mikrofonu serbest bırakır; bu sırada mikrofon seviyesi ve Jarvis skoru gösterilmez. “Gemini görüşmesi açık” yalnızca bağlantı ve ses donanımı hazır olduktan sonra görünür. Bağlantı 20 saniyede kurulmazsa hata gösterilir ve JARVIS dinlemeye geri döner.
 
 Sesli karşılama sırasında Gemini'ye mikrofon sesi gönderilmez. Karşılama yanıtı bittikten sonra görüşme mikrofonu açılır; yanıt gelmezse 8 saniye sonra görüşme mikrofonu yine açılır. Tanılama alanı karşılama, ses çıkışı ve mikrofon akışı aşamalarını ayrı ayrı bildirir.
+
+Tanılama artık son “Jarvis” tetiklemesinin saatini ve skorunu, son Gemini bağlantı sonucunu ve bu dinleme boyunca görülen en yüksek model skorunu ayrı saklar. Yeniden dinleme başlasa bile Gemini hata mesajı kaybolmaz.
 
 Gemini Live ses akışı için internet ve desteklenen API anahtarı gerekir. Ses kayıt dosyası saklanmaz. Anahtar cihazda Android Keystore ile şifrelenir. [Google Live API belgeleri](https://ai.google.dev/gemini-api/docs/live-api) ve [fiyatlandırması](https://ai.google.dev/gemini-api/docs/pricing) geçerlidir.
 

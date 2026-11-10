@@ -20,6 +20,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class MainActivity : Activity() {
@@ -60,7 +62,7 @@ class MainActivity : Activity() {
             setBackgroundColor(this@MainActivity.background)
         }
         root.addView(text("J A R V I S", 34, cyan, true))
-        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.2", 12, muted))
+        root.addView(text("AUTONOMOUS VOICE INTERFACE  /  0.7.3", 12, muted))
         hud = JarvisHudView(this)
         root.addView(hud, LinearLayout.LayoutParams(-1, dp(260)))
 
@@ -167,7 +169,15 @@ class MainActivity : Activity() {
         val score = pref.getFloat("model_score", -1f)
         scoreText.text = if (score < 0 || !WakeWordService.running || connecting || WakeWordService.liveActive) "JARVIS SKORU  —"
             else "JARVIS SKORU  ${"%.2f".format(Locale.US, score)} / 0.25"
-        logText.text = pref.getString("status", "Henüz kayıt yok")
+        val wakeAt = pref.getLong("last_wake_at", 0L)
+        val wakeLine = if (wakeAt == 0L) "Son Jarvis tetiklemesi: yok"
+            else "Son Jarvis tetiklemesi: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(wakeAt))} • skor ${"%.2f".format(Locale.US, pref.getFloat("last_wake_score", 0f))}"
+        val geminiLine = "Son Gemini durumu: " +
+            pref.getString("gemini_status", "Henüz bağlantı denenmedi")
+        val peak = pref.getFloat("peak_score", -1f)
+        val peakLine = if (peak < 0f) "Bu dinlemede en yüksek skor: henüz yok"
+            else "Bu dinlemede en yüksek skor: ${"%.3f".format(Locale.US, peak)}"
+        logText.text = "$wakeLine\n$geminiLine\n$peakLine\nAlgılayıcı: $engine"
     }
 
     private fun message(value: String) {

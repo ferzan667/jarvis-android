@@ -58,7 +58,7 @@ class OpenWakeWord private constructor(
 
     interface OnTelemetryListener {
         fun onState(state: String)
-        fun onFrame(level: Int, score: Float)
+        fun onFrame(level: Int, score: Float, peak: Float)
     }
 
     // ------------------------------------------------------------------
@@ -163,6 +163,7 @@ class OpenWakeWord private constructor(
     private var predictionCount = 0
     private var lastTelemetryAt = 0L
     private var lastScore = Float.NaN
+    private var peakScore = Float.NaN
     private var inferenceErrorReported = false
 
     private fun reportState(state: String) {
@@ -300,6 +301,7 @@ class OpenWakeWord private constructor(
         lastDetectionTime = 0L
         lastTelemetryAt = 0L
         lastScore = Float.NaN
+        peakScore = Float.NaN
         inferenceErrorReported = false
     }
 
@@ -359,7 +361,8 @@ class OpenWakeWord private constructor(
                 val db = 20.0 * log10((rms / 32768.0).coerceAtLeast(0.000001))
                 val level = ((db + 60.0) / 60.0 * 100.0).toInt().coerceIn(0, 100)
                 val score = lastScore
-                mainHandler.post { telemetry?.onFrame(level, score) }
+                val peak = peakScore
+                mainHandler.post { telemetry?.onFrame(level, score, peak) }
                 lastTelemetryAt = nowTelemetry
             }
 
@@ -392,6 +395,7 @@ class OpenWakeWord private constructor(
 
                 val score = runWakeWordModel(features)
                 lastScore = score
+                if (!peakScore.isFinite() || score > peakScore) peakScore = score
                 if (score >= threshold) {
                     val now = System.currentTimeMillis()
                     if (now - lastDetectionTime > debounceMs) {
