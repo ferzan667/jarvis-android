@@ -2,10 +2,8 @@ package com.razen.jarvis
 
 import android.Manifest
 import android.app.Activity
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.AudioManager
@@ -19,9 +17,11 @@ import android.speech.tts.UtteranceProgressListener
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.text.InputType
 import java.util.Locale
 
 class MainActivity : Activity() {
@@ -33,7 +33,8 @@ class MainActivity : Activity() {
     private lateinit var detail: TextView
     private val handler = Handler(Looper.getMainLooper())
     private val permissionRequest = 210
-    private var receiverRegistered = false
+    private var pendingStartLive = false
+    private lateinit var keyInput: EditText
     private var testTts: TextToSpeech? = null
     private val refresh = object : Runnable {
         override fun run() {
@@ -41,16 +42,6 @@ class MainActivity : Activity() {
             handler.postDelayed(this, 1200)
         }
     }
-    private val wakeReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == WakeWordService.ACTION_WAKE) {
-                // An Activity may launch another app while the user is actively viewing it.
-                // On the lock screen, only the notification is shown; it cannot unlock the phone.
-                openChatGpt()
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(8, 15, 25)
@@ -63,13 +54,38 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(8, 15, 25))
         }
         root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
-        root.addView(label("0.4.0 • Tek kelime: JARVIS", 17, Color.LTGRAY))
+        root.addView(label("0.5.0 • JARVIS + Gemini Live", 17, Color.LTGRAY))
         status = label("Durum okunuyor", 19, Color.WHITE)
         root.addView(status)
 
+        keyInput = EditText(this).apply {
+            hint = if (GeminiKeyStore.load(this@MainActivity) == null)
+                "Gemini API anahtarını gir" else "Gemini anahtarı kayıtlı"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        root.addView(keyInput)
+        root.addView(button("Anahtarı telefonda kaydet") {
+            val value = keyInput.text.toString().trim()
+            if (value.isBlank()) status.text = "Önce Gemini API anahtarını girin"
+            else try {
+                GeminiKeyStore.save(this, value)
+                keyInput.text.clear()
+                keyInput.hint = "Gemini anahtarı kayıtlı"
+                status.text = "Anahtar bu telefonda şifreli kaydedildi"
+            } catch (e: Exception) { status.text = "Anahtar kaydedilemedi: ${e.javaClass.simpleName}" }
+        })
+
         root.addView(button("1 — Dinlemeyi başlat") { startListening() })
-        root.addView(button("2 — TTS tanı testi (otomatik yanıt yok)") { testSpeech() })
-        root.addView(button("3 — ChatGPT'yi aç") { openChatGpt() })
+        root.addView(button("2 — Gemini görüşmesini dene") { startGeminiLive() })
+        root.addView(button("Gemini görüşmesini bitir") {
+            if (WakeWordService.running) startService(Intent(this, WakeWordService::class.java)
+                .setAction(WakeWordService.ACTION_STOP_LIVE))
+        })
+        root.addView(button("TTS tanı testi") { testSpeech() })
         root.addView(button("Dinlemeyi durdur") {
             stopService(Intent(this, WakeWordService::class.java))
             status.text = "Durduruldu"
@@ -78,43 +94,24 @@ class MainActivity : Activity() {
         detail = label("", 14, Color.rgb(171, 210, 225))
         root.addView(detail)
         root.addView(label(
-            "Kullanım: 1'e bas, telefonu açıkken ya da kilitliyken 'Jarvis' de. " +
-            "ChatGPT varsayılan asistan ise Android asistan çağrısı denenir. " +
-            "Kilitliyken Android çağrıyı engelleyebilir; bildirim yedek geçiştir.",
+            "Gemini anahtarını kaydet. Önce 2 ile sesli görüşmeyi ayrı test et. " +
+            "Sonra 1 ile yerel Jarvis algılamasını başlat; algılarsa Gemini görüşmesi açılır. " +
+            "Kilit ekranında çalışma Realme 11 üzerinde doğrulanmalıdır.",
             14, Color.LTGRAY
-        ))
-        root.addView(label(
-            "ChatGPT → Ayarlar → Ses → Sesle Başlat özelliğini aç. " +
-            "ChatGPT yeni/boş sohbete açılırsa sesli görüşme otomatik başlayabilir. " +
-            "Kilitliyken otomatik açılış cihazda test edilmelidir; gerekirse bildirime dokunup kilidi açın.",
-            13, Color.rgb(155, 175, 190)
         ))
         val scroll = ScrollView(this)
         scroll.addView(root)
         setContentView(scroll)
-        handleHandoff(intent)
     }
 
     override fun onStart() {
         super.onStart()
         visible = true
-        val filter = IntentFilter(WakeWordService.ACTION_WAKE)
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(wakeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(wakeReceiver, filter)
-        }
-        receiverRegistered = true
         handler.post(refresh)
     }
 
     override fun onStop() {
         visible = false
-        if (receiverRegistered) {
-            unregisterReceiver(wakeReceiver)
-            receiverRegistered = false
-        }
         handler.removeCallbacks(refresh)
         super.onStop()
     }
@@ -125,22 +122,12 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleHandoff(intent)
-    }
-
-    private fun handleHandoff(intent: Intent?) {
-        if (intent?.getBooleanExtra(WakeWordService.EXTRA_HANDOFF, false) != true) return
-        intent.removeExtra(WakeWordService.EXTRA_HANDOFF)
-        if (WakeWordService.running) startService(Intent(this, WakeWordService::class.java)
-            .setAction(WakeWordService.ACTION_PAUSE))
-        handler.postDelayed({ openChatGpt() }, 350L)
-    }
-
     private fun updateStatus() {
-        status.text = if (WakeWordService.running) "Servis açık • mikrofon durumu için tanılamayı kontrol edin" else "Servis kapalı"
+        status.text = when {
+            WakeWordService.liveActive -> "Gemini görüşmesi açık"
+            WakeWordService.running -> "Jarvis dinleme servisi açık"
+            else -> "Servis kapalı"
+        }
         val pref = getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
         detail.text = "Tanılama: " + pref.getString("status", "Henüz kayıt yok") +
             "\nMikrofon kaydı: " + microphoneState()
@@ -182,6 +169,7 @@ class MainActivity : Activity() {
     }
 
     private fun startListening() {
+        pendingStartLive = false
         val required = mutableListOf(Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= 33) required.add(Manifest.permission.POST_NOTIFICATIONS)
         val missing = required.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
@@ -195,34 +183,29 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != permissionRequest) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            startWakeService()
+            startWakeService(pendingStartLive)
         } else status.text = "Mikrofon izni gerekli"
     }
 
-    private fun startWakeService() {
+    private fun startGeminiLive() {
+        if (GeminiKeyStore.load(this).isNullOrBlank()) {
+            status.text = "Önce Gemini anahtarını kaydedin"
+            return
+        }
+        pendingStartLive = true
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), permissionRequest)
+        else startWakeService(true)
+    }
+
+    private fun startWakeService(startLive: Boolean = false) {
         try {
-            startForegroundService(Intent(this, WakeWordService::class.java))
+            val intent = Intent(this, WakeWordService::class.java)
+            if (startLive) intent.action = WakeWordService.ACTION_START_LIVE
+            startForegroundService(intent)
             status.text = "Başlatılıyor..."
         } catch (e: Exception) {
             status.text = "Başlatma hatası: ${e.javaClass.simpleName}"
-        }
-    }
-
-    private fun openChatGpt() {
-        if (WakeWordService.running) startService(Intent(this, WakeWordService::class.java)
-            .setAction(WakeWordService.ACTION_PAUSE))
-        if (AssistantHandoff.request(this)) {
-            status.text = "Android varsayılan asistan çağrısı gönderildi"
-            return
-        }
-        try {
-            val launch = packageManager.getLaunchIntentForPackage("com.openai.chatgpt")
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(launch)
-            } else status.text = "ChatGPT uygulaması yüklü değil"
-        } catch (e: Exception) {
-            status.text = "ChatGPT açılamadı: ${e.javaClass.simpleName}"
         }
     }
 
@@ -242,6 +225,7 @@ class MainActivity : Activity() {
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
+
 
 
 

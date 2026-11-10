@@ -1,45 +1,22 @@
-# JARVIS Android 0.4.0 — deneme sürümü
+# JARVIS Android 0.5.0 — Gemini Live denemesi
 
-**Ne değişti?**
-- "Hey Jarvis" yerine yalnızca **"Jarvis"** sözünü algılaması için topluluk tarafından eğitilmiş `jarvis_v1.onnx` kullanılıyor.
-- Başlat / durdur / yalnızca elle çalışan **TTS tanı testi** kontrolleri var. "Jarvis" algılanınca JARVIS sesli yanıt vermez.
-- Ses algılama motorunun son çalışma durumu "Tanılama" alanında gösteriliyor.
-- Algılama skoru ve oturum içi algılama sayısı gösteriliyor. Algılayıcı kütüphanesi mikrofonu ayrı iş parçacığında açtığı ve hata geri çağrısı sunmadığı için ilk "başlatıldı" mesajı gerçek mikrofon doğrulaması sayılmaz.
-- Algılama denemesi için eşik 0,35. Yanlış tetikleme artabilir; cihaz ölçümüyle ayarlanmalıdır.
-- Sesli yanıt testi dinleme servisinden bağımsız çalışır. Mikrofon kaydı etkin/etkin değil bilgisi Android 10+ cihazlarda gösterilir.
-- ChatGPT Android varsayılan asistanıysa JARVIS algılamadan sonra resmî `ACTION_ASSIST` çağrısını dener. Uygulama görünürken bu çağrı asistanı açabilir.
-- Ekran kilitliyken aynı çağrı deneysel olarak istenir. Android arka plandan etkinlik açmayı engelleyebilir; isteğin gönderilmiş olması ChatGPT Voice'un açıldığını doğrulamaz. Bildirim yedek geçiştir.
-- Kullanıcı başlattıktan sonra mikrofon servisi ön planda kalır. Algılama sonrası mikrofonu ChatGPT'ye bırakır; başka kayıt kalmayınca dinlemeyi yeniden başlatır. `START_STICKY` Android öldürdüğünde yeniden oluşturmayı isteyebilir; Realme veya Android bunu garanti etmez.
+Bu sürüm, ChatGPT uygulamasına geçmeye çalışmak yerine JARVIS içinde Gemini Live sesli görüşmesi açar. Android uygulaması bilgisayar gerektirmez. İncelenen CanFPV masaüstü ZIP'inden kod, API anahtarı veya TLS özel anahtarı kopyalanmadı.
 
-**Kilit ekranından ChatGPT Voice'un otomatik başlaması henüz doğrulanmadı.**
-Android standart uygulamaların kilitli/arka plan ekranından başka bir uygulamanın etkinliğini otomatik açmasını kısıtlar. ChatGPT için kamuya açık bir üçüncü taraf "sesli modu şimdi başlat" API'si bulunmadığından bu işlemi garanti etmiyoruz.
+## Telefonda deneme sırası
 
-## Telefonda sıfırdan test
-1. Önceki 0.2.x debug sürümünü kaldırın. GitHub Actions debug derlemelerinin imzası farklı olabilir; yükleme/güncelleme başarısızsa eskisini kaldırın.
-2. [Releases](https://github.com/ferzan667/jarvis-android/releases) altında 0.4.0 varsa `JARVIS-debug.apk` dosyasını doğrudan indirin. Yoksa [Actions](https://github.com/ferzan667/jarvis-android/actions) sekmesindeki son **başarılı** derlemeden `JARVIS-Android-APK` ZIP'ini indirip içindeki APK'yı yükleyin.
-3. JARVIS'i açın, mikrofon ve bildirim izinlerini verin.
-4. İsterseniz **TTS tanı testi** düğmesine basın; bu yalnızca elle ses üretimini sınar. Jarvis algılandığında bu ses çalınmaz.
-5. **Dinlemeyi başlat** düğmesine basın. Tanılama altında **Mikrofon kaydı: ses tanıma kaydı etkin** görünmeli (Android 10+). "Görünmüyor" ise mikrofon veya izin sorunu olabilir. Bu gösterge Android'in etkin kayıt listesine bakar; tek başına JARVIS modelinin çalıştığını kanıtlamaz.
-6. Uygulama açıkken normal ses tonuyla tek kelime **"Jarvis"** deyin. Ekranda "JARVIS algılandı!" ve skor yazmasını bekleyin. ChatGPT asistan arayüzü açılıyor mu, doğrudan Voice başlıyor mu ayrı ayrı not edin.
-7. Telefonu kilitleyip tekrar "Jarvis" deyin. ChatGPT asistan açılışı ve Voice başlangıcını ayrı ayrı not edin. Android arka plan kuralı çağrıyı engelleyebilir. Servis bildirimde sürmeli; görüşme bitince dinleme yeniden başlamalı.
-8. Sonucu ve JARVIS ekranındaki **Tanılama** metnini paylaşın. Ekranda aktif mikrofon simgesi yoksa uygulamanın arka plan/izin ayarlarını kontrol edin.
+1. [Releases](https://github.com/ferzan667/jarvis-android/releases) bölümünden `JARVIS-debug.apk` dosyasını indirip yükle. Önceki debug APK farklı imzalıysa önce kaldırman gerekebilir.
+2. Google AI Studio'da kendi Gemini API anahtarını oluştur. Anahtarı sohbete veya GitHub'a gönderme; yalnızca telefondaki JARVIS ekranına yazıp **Anahtarı telefonda kaydet** düğmesine bas. Anahtar Android Keystore ile bu cihazda şifreli saklanır. Sunucusuz istemcide çalışan bir anahtar yine ileri düzey cihaz erişimine karşı tam gizli sayılamaz.
+3. Mikrofon iznini ver. Önce **Gemini görüşmesini dene** düğmesine bas. "Gemini Live bağlı" görünmeli ve konuşma/yanıt duyulmalı. Bu test, "Jarvis" algılamasından bağımsızdır.
+4. Görüşmeyi bitirip **Dinlemeyi başlat** düğmesine bas. **Mikrofon kaydı** göstergesini kontrol et; sonra "Jarvis" de. Algılanırsa yerel algılayıcı mikrofonu bırakır ve Gemini Live görüşmesi başlar.
+5. Ekranı kilitleyip aynı testi yap. Realme 11/Android 15'te arka plan pil politikası ve mikrofon erişimi cihazda doğrulanmalıdır. Uygulama kullanıcı başlatmalı foreground mikrofon servisi kullanır; kapatılır veya yeniden başlatılırsa Android sürekli dinlemeyi garanti etmez.
 
-### Logcat ile mikrofon ayrımı
+## Tanılama
 
-Bilgisayara ADB bağlıysa `adb logcat -s Jarvis OpenWakeWord` komutunu çalıştırın. `Models loaded` modelin açıldığını, `Failed to initialize AudioRecord` mikrofon açılamadığını, `Error in processing thread` çıkarım hatasını gösterir. Ekrandaki skor yalnızca eşik aşıldığında gelir; kütüphane sürekli skor veya ses seviyesi API'si sunmuyor. Uygulama ses kaydı saklamaz. Test için 10 kez "Jarvis" deyip kaçının algılandığını ve 10 dakikalık sessizlikte yanlış tetikleme sayısını not edin; sonra aynı testi kilitli ekranda yapın.
+Ekrandaki **Tanılama** ve **Mikrofon kaydı** satırlarını ayrı ayrı oku. `adb logcat -s Jarvis OpenWakeWord` model/AudioRecord hatalarını gösterir. openWakeWord Android kütüphanesi asenkron başlar ve mikrofon ya da model hatasını uygulamaya geri çağırmaz; bu nedenle servis açık görünmesi algılamanın çalıştığını kanıtlamaz. Uygulama ses kaydı dosyası saklamaz.
 
-## ChatGPT ayarları
-ChatGPT -> Ayarlar -> Ses -> **Sesle Başlat (Start with Voice)** etkinleştirin (bu seçenek mevcutsa). [OpenAI'nin resmî belgesine](https://help.openai.com/en/articles/20001274-chatgpt-voice) göre bu, ChatGPT yeni veya boş sohbete açıldığında Voice'u başlatır. Mevcut bir Voice görüşmesi kilitli ekranda sürdürülebilir; üçüncü taraf uygulamanın kilit ekranından yeni Voice görüşmesi başlatması için belgelenmiş bir arayüz yoktur.
+Gemini Live'a yalnızca görüşme sırasında mikrofon sesi gönderilir. Giriş 16 kHz PCM, yanıt 24 kHz PCM'dir. [Google'ın Live API belgeleri](https://ai.google.dev/gemini-api/docs/live-api) ve [fiyatlandırması](https://ai.google.dev/gemini-api/docs/pricing) geçerlidir; ücretsiz katman sınırlıdır. Ses oturumu veya model kullanılamıyorsa bağlantı hatası Tanılama alanında görünür. Resmî belgeler mobil istemciler için kısa ömürlü anahtar ve sunucu önerir; bilgisayarsız bu kişisel denemede kullanıcı anahtarı cihazda saklanır.
 
-## Kaynak ve lisans
-openWakeWord Android kaynak kodu Apache-2.0 ve yerleşik modeller CC BY-NC-SA 4.0 ile lisanslıdır.
-Tek sözcüklü model: [fwartner/home-assistant-wakewords-collection](https://github.com/fwartner/home-assistant-wakewords-collection/tree/main/en/jarvis), proje MIT lisanslı. `jarvis_v1.onnx` modelinin raporlanan duyarlılığı sınırlıdır, yanlış/kaçırılmış algılama olabilir. `jarvis_v2` daha az yanlış pozitif ama daha düşük yakalama oranına sahiptir. Konuşma ve seslenme testleri gerçek telefon olmadan doğrulanamaz.
+## Kaynaklar
 
-Bir sorun olursa: GitHub Actions derleme kaydı, cihaz üreticisi, Android sürümü, uygulama tanılama mesajı.
-
-## Realme 11 arka plan ayarı
-
-JARVIS'i ekranda açıp dinlemeyi **bir kez** başlatın. Sonra Realme ayarlarında **Ayarlar → Pil → Uygulama pil yönetimi → JARVIS → Arka plan etkinliğine izin ver** seçeneğini açın. Realme'nin [resmî destek sayfası](https://www.realme.com/global/support/faq) ayrıca ön plan etkinliği ve otomatik başlatma izinlerini öneriyor. Bu ayarlar Android'in kilit ekranı veya başka uygulama açma kurallarını kaldırmaz. Sürekli mikrofon dinlemesi pil tüketir ve Android mikrofon göstergesi görünür.
-
-
+Yerel `jarvis_v1.onnx` modeli [fwartner wakeword koleksiyonundan](https://github.com/fwartner/home-assistant-wakewords-collection/tree/main/en/jarvis) CI sırasında alınır. openWakeWord Android kodu Apache-2.0, yerleşik ön işleme modellerinin lisansı CC BY-NC-SA 4.0'dır. Yanlış veya kaçırılmış tetiklemeler gerçek telefonda ölçülmelidir.
 

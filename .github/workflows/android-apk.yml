@@ -78,13 +78,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if gh release view v0.4.0 >/dev/null 2>&1; then
-            gh release upload v0.4.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 --clobber
+          if gh release view v0.5.0 >/dev/null 2>&1; then
+            gh release upload v0.5.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 --clobber
           else
-            gh release create v0.4.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 \
-              --target "$GITHUB_SHA" --title "JARVIS 0.4.0" \
-              --notes "Deneme sürümü. ChatGPT Voice kilit ekranından otomatik başlatılamaz. APK debug imzalıdır; farklı CI çalışmaları arasında güncelleme için önce eski sürümü kaldırmak gerekebilir."
+            gh release create v0.5.0 JARVIS-debug.apk JARVIS-debug.apk.sha256 \
+              --target "$GITHUB_SHA" --title "JARVIS 0.5.0 Gemini Live denemesi" \
+              --notes "Gemini Live ve Jarvis uyandırma denemesi. Fiziksel cihazda henüz doğrulanmadı. API anahtarı kullanıcı tarafından telefonda girilir. Debug APK farklı CI imzasıyla önceki sürümlerin üstüne kurulamayabilir."
           fi
+
 
 
 
