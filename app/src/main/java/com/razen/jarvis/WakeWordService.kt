@@ -21,6 +21,7 @@ import java.util.Locale
 class WakeWordService : Service(), TextToSpeech.OnInitListener {
     companion object {
         const val ACTION_STOP = "com.razen.jarvis.STOP_LISTENING"
+        const val ACTION_TEST = "com.razen.jarvis.TEST_WAKE"
         private const val LISTEN_CHANNEL = "jarvis_microphone_v3"
         private const val ALERT_CHANNEL = "jarvis_response_v3"
         private const val LISTEN_ID = 71
@@ -45,23 +46,29 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         // User starts foreground service from visible Activity to comply with Android 14+.
         startForeground(LISTEN_ID, listeningNotification())
         running = true
+        saveStatus("Mikrofon servisi başlatıldı. Model hazırlanıyor.")
         tts = TextToSpeech(this, this)
         try {
             detector = OpenWakeWord.Builder(applicationContext)
-                .setModel(OpenWakeWord.BuiltInModel.HEY_JARVIS)
-                .setThreshold(0.55f)
+                .setModelAsset("jarvis_v1.onnx")
+                .setThreshold(0.40f)
                 .setDebounceMs(5000L)
                 .build()
             detector?.start { confidence -> wakeDetected(confidence) }
+            saveStatus("Jarvis modeli başlatıldı. Tek kelime: JARVIS")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start wake word engine", e)
+            saveStatus("Ses algılama hatası: ${e.javaClass.simpleName}: ${e.message}")
             notifyResponse("JARVIS başlatılamadı", "Uygulamayı açıp tekrar deneyin")
             stopSelf()
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) stopSelf()
+        when (intent?.action) {
+            ACTION_STOP -> stopSelf()
+            ACTION_TEST -> wakeDetected(1.0f)
+        }
         // Never automatically restart background microphone capture after process termination.
         return START_NOT_STICKY
     }
@@ -69,12 +76,14 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
             Log.w(TAG, "Text-to-speech initialization failed")
+            saveStatus("TTS başlatılamadı. Sesli yanıt için Türkçe dil paketi kontrol edilmeli.")
             return
         }
         val engine = tts ?: return
         val lang = engine.setLanguage(Locale.forLanguageTag("tr-TR"))
         ttsReady = lang != TextToSpeech.LANG_NOT_SUPPORTED &&
             lang != TextToSpeech.LANG_MISSING_DATA
+        if (!ttsReady) saveStatus("Türkçe TTS yüklü değil; algılama çalışabilir ancak sesli yanıt olmayabilir.")
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
             override fun onDone(utteranceId: String?) {
@@ -92,7 +101,8 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         busy = true
         lastWake = SystemClock.elapsedRealtime()
         try { detector?.stop() } catch (e: Exception) { Log.w(TAG, "Pause failed", e) }
-        Log.i(TAG, "Hey Jarvis detected: $confidence")
+        Log.i(TAG, "Jarvis detected: $confidence")
+        saveStatus("JARVIS algılandı! Güven: ${(confidence * 100).toInt()}%")
         notifyResponse("Buyurun efendim", "ChatGPT'yi açmak için bildirime dokunun")
         if (ttsReady) {
             val spoken = tts?.speak(
@@ -113,9 +123,15 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
             detector?.start { confidence -> wakeDetected(confidence) }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resume listening", e)
+            saveStatus("Yeniden dinleme hatası: ${e.javaClass.simpleName}: ${e.message}")
             notifyResponse("JARVIS durdu", "Tekrar başlatmak için uygulamayı açın")
             stopSelf()
         }
+    }
+
+    private fun saveStatus(message: String) {
+        getSharedPreferences("jarvis_diag", Context.MODE_PRIVATE)
+            .edit().putString("status", message).putLong("updated_at", System.currentTimeMillis()).apply()
     }
 
     private fun createChannels() {
