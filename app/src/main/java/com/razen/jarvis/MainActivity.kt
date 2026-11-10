@@ -63,12 +63,12 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(8, 15, 25))
         }
         root.addView(label("J A R V I S", 34, Color.rgb(91, 226, 255)))
-        root.addView(label("0.3.4 • Tek kelime: JARVIS", 17, Color.LTGRAY))
+        root.addView(label("0.4.0 • Tek kelime: JARVIS", 17, Color.LTGRAY))
         status = label("Durum okunuyor", 19, Color.WHITE)
         root.addView(status)
 
         root.addView(button("1 — Dinlemeyi başlat") { startListening() })
-        root.addView(button("2 — Sesli yanıtı test et") { testSpeech() })
+        root.addView(button("2 — TTS tanı testi (otomatik yanıt yok)") { testSpeech() })
         root.addView(button("3 — ChatGPT'yi aç") { openChatGpt() })
         root.addView(button("Dinlemeyi durdur") {
             stopService(Intent(this, WakeWordService::class.java))
@@ -134,7 +134,8 @@ class MainActivity : Activity() {
     private fun handleHandoff(intent: Intent?) {
         if (intent?.getBooleanExtra(WakeWordService.EXTRA_HANDOFF, false) != true) return
         intent.removeExtra(WakeWordService.EXTRA_HANDOFF)
-        stopService(Intent(this, WakeWordService::class.java))
+        if (WakeWordService.running) startService(Intent(this, WakeWordService::class.java)
+            .setAction(WakeWordService.ACTION_PAUSE))
         handler.postDelayed({ openChatGpt() }, 350L)
     }
 
@@ -208,7 +209,8 @@ class MainActivity : Activity() {
     }
 
     private fun openChatGpt() {
-        stopService(Intent(this, WakeWordService::class.java))
+        if (WakeWordService.running) startService(Intent(this, WakeWordService::class.java)
+            .setAction(WakeWordService.ACTION_PAUSE))
         if (AssistantHandoff.request(this)) {
             status.text = "Android varsayılan asistan çağrısı gönderildi"
             return
@@ -240,5 +242,6 @@ class MainActivity : Activity() {
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
+
 
 

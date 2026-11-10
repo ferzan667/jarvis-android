@@ -7,21 +7,20 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.openwakeword.OpenWakeWord
 import java.util.Locale
 
 /** User-started microphone foreground service; it never bypasses the Android lock screen. */
-class WakeWordService : Service(), TextToSpeech.OnInitListener {
+class WakeWordService : Service() {
     companion object {
         const val ACTION_STOP = "com.razen.jarvis.STOP_LISTENING"
-        const val ACTION_TEST = "com.razen.jarvis.TEST_WAKE"
+        const val ACTION_PAUSE = "com.razen.jarvis.PAUSE_FOR_ASSISTANT"
         const val ACTION_WAKE = "com.razen.jarvis.WAKE_DETECTED"
         const val EXTRA_HANDOFF = "com.razen.jarvis.HANDOFF_TO_CHATGPT"
         private const val LISTEN_CHANNEL = "jarvis_microphone_v3"
@@ -35,10 +34,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
 
     private val handler = Handler(Looper.getMainLooper())
     private var detector: OpenWakeWord? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
     private var busy = false
-    private var handoffPending = false
     private var lastWake = 0L
     private var detections = 0
 
@@ -48,10 +44,16 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         super.onCreate()
         createChannels()
         // User starts foreground service from visible Activity to comply with Android 14+.
-        startForeground(LISTEN_ID, listeningNotification())
+        try {
+            startForeground(LISTEN_ID, listeningNotification())
+        } catch (e: Exception) {
+            saveStatus("Mikrofon servisi açılamadı: ${e.javaClass.simpleName}: ${e.message}")
+            Log.e(TAG, "Foreground microphone failed", e)
+            stopSelf()
+            return
+        }
         running = true
         saveStatus("Mikrofon servisi başlatıldı. Model hazırlanıyor.")
-        tts = TextToSpeech(this, this)
         try {
             detector = OpenWakeWord.Builder(applicationContext)
                 .setModelAsset("jarvis_v1.onnx")
@@ -70,88 +72,65 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> stopSelf()
-            ACTION_TEST -> wakeDetected(1.0f, manualTest = true)
+            ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
+            ACTION_PAUSE -> pauseForAssistant()
         }
-        // Never automatically restart background microphone capture after process termination.
-        return START_NOT_STICKY
+        // The user explicitly started continuous listening. Android may recreate this service.
+        return START_STICKY
     }
 
-    override fun onInit(status: Int) {
-        if (status != TextToSpeech.SUCCESS) {
-            Log.w(TAG, "Text-to-speech initialization failed")
-            saveStatus("TTS başlatılamadı. Sesli yanıt için Türkçe dil paketi kontrol edilmeli.")
-            return
-        }
-        val engine = tts ?: return
-        val lang = engine.setLanguage(Locale.forLanguageTag("tr-TR"))
-        ttsReady = lang != TextToSpeech.LANG_NOT_SUPPORTED &&
-            lang != TextToSpeech.LANG_MISSING_DATA
-        if (!ttsReady) saveStatus("Türkçe TTS desteklenmiyor veya dil verisi eksik (kod $lang). Telefonun TTS ayarlarını kontrol edin.")
-        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) {
-                handler.postDelayed({ resumeWakeListener() }, 650L)
-            }
-            @Deprecated("Deprecated by Android")
-            override fun onError(utteranceId: String?) {
-                saveStatus("TTS konuşma hatası; konuşma motorunu ve medya sesini kontrol edin.")
-                handler.postDelayed({ resumeWakeListener() }, 650L)
-            }
-        })
-    }
-
-    private fun wakeDetected(confidence: Float, manualTest: Boolean = false) {
+    private fun wakeDetected(confidence: Float) {
         if (!running || busy || SystemClock.elapsedRealtime() - lastWake < 5000L) return
-        busy = true
         lastWake = SystemClock.elapsedRealtime()
-        try { detector?.stop() } catch (e: Exception) { Log.w(TAG, "Pause failed", e) }
+        pauseForAssistant()
         Log.i(TAG, "Jarvis detected: $confidence")
         detections++
         saveStatus("JARVIS algılandı! Skor: ${"%.2f".format(Locale.US, confidence)}; bu oturumda: $detections")
-        notifyResponse("Buyurun efendim", "ChatGPT sesli sohbetine geçmek için dokunun")
-        // Foreground Activity can request the default assistant after releasing our mic.
-        if (MainActivity.visible && !manualTest) {
-            handoffPending = true
+        notifyResponse("Jarvis algılandı", "ChatGPT açılmazsa bildirime dokunun")
+        if (MainActivity.visible) {
             handler.postDelayed({
                 if (running) {
                     sendBroadcast(Intent(ACTION_WAKE).setPackage(packageName))
-                    stopSelf()
                 }
-            }, 1300L)
-        } else if (!manualTest && AssistantHandoff.chatGptOwnsRole(this)) {
-            handoffPending = true
-            // An ordinary app cannot bypass background launch or keyguard restrictions.
-            // Request the official assist action once, then leave the notification as fallback.
+            }, 250L)
+        } else if (AssistantHandoff.chatGptOwnsRole(this)) {
             handler.postDelayed({
                 if (running) {
                     val requested = AssistantHandoff.request(this)
                     saveStatus(if (requested) "Android asistan çağrısı istendi; açılışı cihazda doğrulayın."
                         else "Asistan çağrısı reddedildi; bildirimden geçin.")
-                    stopSelf()
                 }
-            }, 1800L)
+            }, 250L)
         }
-        if (ttsReady) {
-            val spoken = tts?.speak(
-                "Buyurun efendim.", TextToSpeech.QUEUE_FLUSH, null, "jarvis_ack"
-            ) ?: TextToSpeech.ERROR
-            if (spoken != TextToSpeech.ERROR) {
-                handler.postDelayed({ resumeWakeListener() }, 7000L)
-                return
-            }
-            saveStatus("TTS speak() hata döndürdü. TTS motorunu ve Türkçe ses paketini kontrol edin.")
-        } else {
-            saveStatus("TTS hazır değil. Türkçe ses paketi veya TTS motoru kontrol edilmeli.")
-        }
-        handler.postDelayed({ resumeWakeListener() }, 1500L)
+    }
+
+    private fun pauseForAssistant() {
+        if (busy) return
+        busy = true
+        try { detector?.stop() } catch (e: Exception) { Log.w(TAG, "Pause failed", e) }
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .notify(LISTEN_ID, listeningNotification(paused = true))
+        handler.postDelayed({ resumeWakeListener() }, 20_000L)
     }
 
     private fun resumeWakeListener() {
-        if (!running || !busy || handoffPending) return
+        if (!running || !busy) return
+        val anotherRecording = try {
+            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audio.activeRecordingConfigurations.isNotEmpty()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not inspect active recordings", e)
+            false
+        }
+        if (anotherRecording) {
+            handler.postDelayed({ resumeWakeListener() }, 5_000L)
+            return
+        }
         busy = false
         try {
             detector?.start { confidence -> wakeDetected(confidence) }
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .notify(LISTEN_ID, listeningNotification())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resume listening", e)
             saveStatus("Yeniden dinleme hatası: ${e.javaClass.simpleName}: ${e.message}")
@@ -184,7 +163,7 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         )
     }
 
-    private fun listeningNotification(): Notification {
+    private fun listeningNotification(paused: Boolean = false): Notification {
         val stop = PendingIntent.getService(
             this, 9, Intent(this, WakeWordService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -195,8 +174,8 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         )
         return Notification.Builder(this, LISTEN_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("JARVIS dinliyor")
-            .setContentText("Jarvis diyerek seslenebilirsiniz")
+            .setContentTitle(if (paused) "JARVIS asistanı bekliyor" else "JARVIS dinliyor")
+            .setContentText(if (paused) "Görüşme bitince dinleme devam eder" else "Jarvis diyerek seslenebilirsiniz")
             .setContentIntent(open)
             .setOngoing(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -220,11 +199,10 @@ class WakeWordService : Service(), TextToSpeech.OnInitListener {
         running = false
         handler.removeCallbacksAndMessages(null)
         try { detector?.release() } catch (_: Exception) {}
-        try { tts?.stop(); tts?.shutdown() } catch (_: Exception) {}
         detector = null
-        tts = null
         super.onDestroy()
     }
 }
+
 
 
