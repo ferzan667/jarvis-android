@@ -58,7 +58,7 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(26), dp(20), dp(28))
-            setBackgroundColor(background)
+            setBackgroundColor(this@MainActivity.background)
         }
         root.addView(text("J A R V I S", 34, cyan, true))
         root.addView(text("VOICE SYSTEM  /  0.6.0", 12, muted))
@@ -114,7 +114,7 @@ class MainActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setTextColor(Color.WHITE)
             setHintTextColor(muted)
-            singleLine = true
+            setSingleLine(true)
             backgroundTintList = android.content.res.ColorStateList.valueOf(cyan)
         }
         keyCard.addView(keyInput)
@@ -140,7 +140,7 @@ class MainActivity : Activity() {
         root.addView(diagCard)
         root.addView(space(16))
         root.addView(text("Ekran kapalıyken dinleme için bildirim ve mikrofon izinlerini ver. Realme pil ayarlarında JARVIS için arka plan çalışmasına izin ver.", 12, muted))
-        val scroll = ScrollView(this).apply { fillViewport = true }
+        val scroll = ScrollView(this).apply { isFillViewport = true }
         scroll.addView(root)
         setContentView(scroll)
     }
@@ -276,7 +276,7 @@ class MainActivity : Activity() {
             text = value
             textSize = 13f
             isAllCaps = false
-            setTextColor(if (primary) background else cyan)
+            setTextColor(if (primary) this@MainActivity.background else cyan)
             background = GradientDrawable().apply {
                 setColor(if (primary) cyan else panel)
                 cornerRadius = dp(13).toFloat()
